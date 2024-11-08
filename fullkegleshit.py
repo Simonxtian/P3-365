@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 import time
-import numpy as np
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 
