@@ -14,12 +14,12 @@ width = 640
 focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
 
 #grænseværdier for gul farve i HSV
-nedreGul = (25/255*180,110,125)
-ovreGul = (55/255*180,255,255)
+nedreGul = (25/255*180,130,125)
+ovreGul = (55/255*180,255,200)
 
 #grænseværdier for blå farve i HSV
-nedreBlaa = (100,120,0)
-ovreBlaa = (140,255,255)
+nedreBlaa = (100,200,0)
+ovreBlaa = (120,255,255)
 
 def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_image_width):
     """
@@ -114,6 +114,9 @@ def filterColors(colorFrame, depthFrame, nedre, ovre):
         
     # Finder farverne i billedet
     altFarve = cv2.inRange(hsvFrame, nedre, ovre)
+
+    # median blur
+    altFarve = cv2.medianBlur(altFarve, 5)
 
     # Filtrerer små hvide steder fra
     altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
