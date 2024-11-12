@@ -14,8 +14,8 @@ width = 640
 focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
 
 #grænseværdier for gul farve i HSV
-nedreGul = (25/255*180,130,125)
-ovreGul = (55/255*180,255,200)
+nedreGul = (20,130,125)
+ovreGul = (55,255,255)
 
 #grænseværdier for blå farve i HSV
 nedreBlaa = (100,200,0)
