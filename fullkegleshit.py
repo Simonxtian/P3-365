@@ -47,8 +47,11 @@ def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_imag
     # Draw bbox
     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 0, 255), 2)
     # average distance in the bounding box
-    distance = np.mean(depth_image[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]])
-    # print(distance)
+    d = (np.nanmean(depth_image[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]) + 50.0)
+    if d > 430:
+        distance=math.sqrt(d**2 - 430**2)
+    else:
+        distance=0
 
     # Convert spherical coordinates to Cartesian
     x_cart = int(distance * math.cos(math.radians(angle)))
@@ -268,6 +271,8 @@ def main():
                 plt.scatter([point[0] for point in cartisianCoordinatesB], [point[1] for point in cartisianCoordinatesB], color='blue', label='Blue Cones')
                 plt.scatter([point[0] for point in cartisianCoordinatesG], [point[1] for point in cartisianCoordinatesG], color='yellow', label='Yellow Cones')
                 plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
+                plt.xlim(0,3000)
+                plt.ylim(-1500,1500)
                 plt.legend()
                 plt.show()
                 plt.pause(0.1)
