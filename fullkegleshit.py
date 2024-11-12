@@ -18,8 +18,8 @@ nedreGul = (20,130,125)
 ovreGul = (55,255,255)
 
 #grænseværdier for blå farve i HSV
-nedreBlaa = (100,200,0)
-ovreBlaa = (120,255,255)
+nedreBlaa = (100,230,115)
+ovreBlaa = (115,255,255)
 
 def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_image_width):
     """
