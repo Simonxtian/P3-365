@@ -119,10 +119,10 @@ def filterColors(colorFrame, depthFrame, nedre, ovre):
     altFarve = cv2.inRange(hsvFrame, nedre, ovre)
 
     # median blur
-    altFarve = cv2.medianBlur(altFarve, 5)
+    altFarve = cv2.medianBlur(altFarve, 11)
 
     # Filtrerer små hvide steder fra
-    altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
+    # altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
     altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_CLOSE, np.ones((10,10),np.uint8))
 
     # Lægger masken over dybde billedet så vi kun ser på dybden hvor der er gult
@@ -273,6 +273,7 @@ def main():
                 plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
                 plt.xlim(0,3000)
                 plt.ylim(-1500,1500)
+                plt.gca().invert_yaxis()
                 plt.legend()
                 plt.show()
                 plt.pause(0.1)
