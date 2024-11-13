@@ -108,25 +108,30 @@ def calculate_midpoints(blue_cones, yellow_cones):
 
         return midpoints
 
-def filterColors(colorFrame, depthFrame, nedre, ovre):
+def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
+    cartisianCoordinates = []
+    for point in bottomPoints:
+        cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame, focalLength, halfImageWidth))
+    return cartisianCoordinates
+
+def filterColors(colorFrame, nedre, ovre, blursize):
     # Konverterer framen til hsv farveskalaen så vi bedre kan arbejde med den
     hsvFrame = cv2.cvtColor(colorFrame, cv2.COLOR_BGR2HSV)
-
-    # colormap til depth image
-    depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depthFrame, alpha=0.1), cv2.COLORMAP_JET)
         
     # Finder farverne i billedet
-    altFarve = cv2.inRange(hsvFrame, nedre, ovre)
+    mask = cv2.inRange(hsvFrame, nedre, ovre)
 
     # median blur
-    altFarve = cv2.medianBlur(altFarve, 11)
+    mask = cv2.medianBlur(mask, blursize)
 
     # Filtrerer små hvide steder fra
     # altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-    altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_CLOSE, np.ones((10,10),np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((10,10),np.uint8))
 
-    # Lægger masken over dybde billedet så vi kun ser på dybden hvor der er gult
-    kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask = altFarve)
+    return mask
+
+def depthSegmentation(binaryImage, depthFrame, colorFrame):
+    kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask = binaryImage)
 
     # creating region of interest with bounding box around cones with information from the color image
     # contours, hierarchy = cv2.findContours(altFarve, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -218,6 +223,18 @@ def chooseSide(side,frame):
     else:
         return frame
 
+def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints):
+    plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
+    plt.scatter([point[0] for point in guleCartisianCoordinates], [point[1] for point in guleCartisianCoordinates], color='yellow', label='Yellow Cones')
+    plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
+    plt.xlim(0,3000)
+    plt.ylim(-1500,1500)
+    plt.gca().invert_yaxis()
+    plt.legend()
+    plt.show()
+    plt.pause(0.1)
+    plt.clf()
+
 def main():
     # Configure depth and color streams
     pipeline = rs.pipeline()
@@ -232,8 +249,8 @@ def main():
     align = rs.align(alignTo)
 
     #ready for plotting
-    plt.ion()
-    plt.figure(figsize=(8, 6))
+    # plt.ion()
+    # plt.figure(figsize=(8, 6))
 
     try:
         while True:
@@ -253,34 +270,26 @@ def main():
                 # Color map af depth image
                 depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
 
-                gult, bottomPointsG = filterColors(colorImage, depthImage, nedreGul, ovreGul)
-                blaa, bottomPointsB = filterColors(colorImage, depthImage, nedreBlaa, ovreBlaa)
+                # filtrere farver for at få maske af gule og blå kegler
+                gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
+                blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
                 
-                cartisianCoordinatesG = []
-                for point in bottomPointsG:
-                    cartisianCoordinatesG.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, gult, focalLength, halfImageWidth))
+                # Dybde segmentering for at se forskel på kegler som overlapper og få bunden af keglerne
+                guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage)  
+                blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage)
 
-                cartisianCoordinatesB = []
-                for point in bottomPointsB:
-                    cartisianCoordinatesB.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, blaa, focalLength, halfImageWidth))
-
+                # Convert the pixel coordinates of the bottom points to Cartesian coordinates
+                guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
+                blaaCartisianCoordinates = listOfCartisianCoords(blaaBottomPoints, depthImage, blaaKegler)
+                
                 # Calculate midpoints between blue and yellow cones
-                midpoints = calculate_midpoints(cartisianCoordinatesB, cartisianCoordinatesG)
+                midpoints = calculate_midpoints(blaaCartisianCoordinates, guleCartisianCoordinates)
 
                 # Display the midpoints
-                plt.scatter([point[0] for point in cartisianCoordinatesB], [point[1] for point in cartisianCoordinatesB], color='blue', label='Blue Cones')
-                plt.scatter([point[0] for point in cartisianCoordinatesG], [point[1] for point in cartisianCoordinatesG], color='yellow', label='Yellow Cones')
-                plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
-                plt.xlim(0,3000)
-                plt.ylim(-1500,1500)
-                plt.gca().invert_yaxis()
-                plt.legend()
-                plt.show()
-                plt.pause(0.1)
-                plt.clf()
+                #plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints)
 
                 # Combine the two images
-                combinedImage = cv2.bitwise_or(gult, blaa)
+                combinedImage = cv2.bitwise_or(guleKegler, blaaKegler)
 
                 #print("Gul: ", bottomPointsG)
                 #print("Blaa: ", bottomPointsB)
