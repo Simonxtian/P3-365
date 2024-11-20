@@ -5,6 +5,8 @@ import pyrealsense2 as rs
 import time
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
+from scipy.interpolate import CubicSpline
+
 
 startTime = time.time()
 
@@ -12,6 +14,7 @@ halfImageWidth = 640 / 2
 FOV = 87.0
 width = 640
 focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
+display_plot = True
 
 #grænseværdier for gul farve i HSV
 nedreGul = (20,130,125)
@@ -20,6 +23,10 @@ ovreGul = (55,255,255)
 #grænseværdier for blå farve i HSV
 nedreBlaa = (100,230,115)
 ovreBlaa = (115,255,255)
+
+def close_plot(event):
+                    if event.key == 'q': 
+                        plt.close()
 
 def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_image_width):
     """
@@ -223,24 +230,65 @@ def chooseSide(side,frame):
     else:
         return frame
 
-def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints):
+def calculate_curvature(spline, x_val):
+    # Calculate the curvature of the spline
+    dx = spline.derivative(nu=1)
+    ddx = spline.derivative(nu=2)
+    curvature = np.abs(ddx(x_val)) / (1 + dx(x_val)**2)**1.5
+    return curvature
+
+def predict_curvature(coords):
+    if len(coords) < 2:
+        print("Insufficient points to calculate curvature.")
+        return 0.0, None  # Return 0.0 if there are too few points
+
+    # Ensure coords is a list of tuples with two elements each
+    coords = [(x, y) for x, y in coords if len((x, y)) == 2]
+
+    # Remove duplicate x values while preserving order
+    coords_dict = {x: y for x, y in coords}
+    unique_coords = list(coords_dict.items())
+
+    # Sort the coordinates by x values
+    sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
+    x_coords, y_coords = zip(*sorted_coords)
+
+    spline = CubicSpline(x_coords, y_coords)
+
+    x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
+
+    curvatures = [calculate_curvature(spline, x) for x in x_smooth]
+    max_curvature = np.max(curvatures)
+    return max_curvature, spline
+
+def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
     plt.scatter([point[0] for point in guleCartisianCoordinates], [point[1] for point in guleCartisianCoordinates], color='yellow', label='Yellow Cones')
     plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
-    plt.xlim(0,3000)
-    plt.ylim(-1500,1500)
+
+    # Generate points on the spline
+    x_coords = [point[0] for point in midpoints]
+    x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
+    y_smooth = spline(x_smooth)
+
+    # Plot the spline
+    plt.plot(x_smooth, y_smooth, color='green', label='Spline')
+
+    plt.xlim(0, 3000)
+    plt.ylim(-1500, 1500)
     plt.gca().invert_yaxis()
     plt.legend()
     plt.show()
     plt.pause(0.1)
     plt.clf()
 
+
 def main():
     # Configure depth and color streams
     pipeline = rs.pipeline()
     config = rs.config()
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
     config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
     # Start streaming
     pipeline.start(config)
@@ -248,9 +296,10 @@ def main():
     alignTo = rs.stream.color
     align = rs.align(alignTo)
 
-    #ready for plotting
-    # plt.ion()
-    # plt.figure(figsize=(8, 6))
+    # Ready for plotting
+    if display_plot:
+        plt.ion()
+        plt.figure(figsize=(8, 6))
 
     try:
         while True:
@@ -270,40 +319,40 @@ def main():
                 # Color map af depth image
                 depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
 
-                # filtrere farver for at få maske af gule og blå kegler
+                # Filter colors to get masks for yellow and blue cones
                 gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
                 blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
-                
-                # Dybde segmentering for at se forskel på kegler som overlapper og få bunden af keglerne
-                guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage)  
+
+                # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
+                guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage)
                 blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage)
 
                 # Convert the pixel coordinates of the bottom points to Cartesian coordinates
                 guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
                 blaaCartisianCoordinates = listOfCartisianCoords(blaaBottomPoints, depthImage, blaaKegler)
-                
+
                 # Calculate midpoints between blue and yellow cones
                 midpoints = calculate_midpoints(blaaCartisianCoordinates, guleCartisianCoordinates)
 
-                # Display the midpoints
-                #plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints)
+                # Calculate the curvature of the spline
+                max_curvature, spline = predict_curvature(midpoints)
+                print(f'Maximum curvature: {max_curvature}')
+
+                # Check if the spline is not None before using itd
+                if display_plot and spline is not None:
+                    plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
+               
 
                 # Combine the two images
                 combinedImage = cv2.bitwise_or(guleKegler, blaaKegler)
 
-                #print("Gul: ", bottomPointsG)
-                #print("Blaa: ", bottomPointsB)
-
                 # Show the images
                 cv2.imshow('RealSense Depth', depthColormap)
-                # cv2.imshow('RealSense Color', color_image)
                 cv2.imshow('gult', combinedImage)
-                #cv2.imshow('Binary Mask', binary_mask)
-                #cv2.imshow('Masked Image', masked_image)
-
-                # cv2.waitKey(0)
-
-                # Break the loop if 'q' is pressed
+                
+                fig=plt.gcf()
+                fig.canvas.mpl_connect('key_press_event', close_plot)
+                
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
@@ -312,5 +361,4 @@ def main():
         pipeline.stop()
         cv2.destroyAllWindows()
 
-if __name__ == "__main__":
-    main()
+main()
