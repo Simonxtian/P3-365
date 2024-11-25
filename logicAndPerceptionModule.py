@@ -6,6 +6,7 @@ import time
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
+import serial
 
 
 startTime = time.time()
@@ -14,7 +15,7 @@ halfImageWidth = 640 / 2
 FOV = 87.0
 width = 640
 focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
-display_plot = True
+display_plot = False
 
 #grænseværdier for gul farve i HSV
 nedreGul = (20,130,125)
@@ -23,6 +24,23 @@ ovreGul = (55,255,255)
 #grænseværdier for blå farve i HSV
 nedreBlaa = (100,230,115)
 ovreBlaa = (115,255,255)
+
+#Arduino
+arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1)
+
+#CONTROL MODULE
+speed = 100
+maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
+
+
+###PID VALUES####
+pControlValue = 0.5 #Skal ændres ellers slettes
+iControlValue = 0.1
+dControlValue = 0.1
+
+integral_error = 0.0
+previous_error = 0.0
+#################
 
 def close_plot(event):
                     if event.key == 'q': 
@@ -80,11 +98,13 @@ def calculate_midpoints(blue_cones, yellow_cones):
     """
     # Combine blue and yellow cones into a single array for triangulation
     all_cones = np.array(blue_cones + yellow_cones)
+    
+    
     if len(all_cones) < 4:
         midpoints = []
         for blue_cone in blue_cones:
             for yellow_cone in yellow_cones:
-                midpoints.append(((blue_cone[0] + yellow_cone[0]) / 2, (blue_cone[1] + yellow_cone[1]) / 2))
+                midpoints.append(((blue_cone[0] + yellow_cone[0]) / 2, (blue_cone[1] + yellow_cone[1]) / 2)) 
         return midpoints
     else:
         num_blue = len(blue_cones)  # Number of blue cones to identify them later
@@ -112,7 +132,8 @@ def calculate_midpoints(blue_cones, yellow_cones):
                     point1, point2 = all_cones[idx1], all_cones[idx2]
                     midpoint = ((point1[0] + point2[0]) / 2, (point1[1] + point2[1]) / 2)
                     midpoints.append(midpoint)
-
+        
+        # midpoints.insert(0, (0, 0))
         return midpoints
 
 def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
@@ -153,8 +174,7 @@ def depthSegmentation(binaryImage, depthFrame, colorFrame):
     #     # drawing bounding boxes
     #     if len(boundingBoxes) > 0:
     #         cv2.rectangle(kegleDepth, (x, y), (x+w, y+h), (0, 255, 0), 2)
-    # print("new")
-    # print(boundingBoxes)
+    
         
     # Dybde segmentering
     depthRanges = [(1, 300), (301, 600), (601, 900), (901, 1200), (1201, 1500), (1501, 1800), (1801, 2100), (2101, 2400), (2401, 2700), (2701, 3000)]
@@ -239,7 +259,7 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
-        print("Insufficient points to calculate curvature.")
+        # print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -256,9 +276,13 @@ def predict_curvature(coords):
     spline = CubicSpline(x_coords, y_coords)
 
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
+   
 
     curvatures = [calculate_curvature(spline, x) for x in x_smooth]
     max_curvature = np.max(curvatures)
+
+    
+
     return max_curvature, spline
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
@@ -268,9 +292,13 @@ def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, mi
 
     # Generate points on the spline
     x_coords = [point[0] for point in midpoints]
+    # x_coords = np.insert(x_coords, 0,[0.0,0.0]) # Insert cars position as the first point
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
+    
     y_smooth = spline(x_smooth)
-
+    #y_smooth[0] = 0.0
+    # y_smooth = np.insert(y_smooth, 0,0.0) # Insert cars position as the first point
+    
     # Plot the spline
     plt.plot(x_smooth, y_smooth, color='green', label='Spline')
 
@@ -282,6 +310,67 @@ def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, mi
     plt.pause(0.1)
     plt.clf()
 
+
+###CONTROL MODULE####
+def speedAngleArduino(localspeed,angle):
+    #localspeed is the speed set in this function, and not the global
+    localspeed = str(localspeed).zfill(3)
+    angle = str(angle).zfill(3)
+    val = f"{localspeed}{angle}\n"
+    # print("Value send to arduino",val)
+    arduino.write(bytes(val, 'utf-8'))
+    # time.sleep(0.05)
+
+def deg2turnvalue(deg):
+    return 90 + deg*90/maxTurnAngle # 37 is the max turn angle in degrees      -      90 is the middle for the servo(0-180)
+
+def steerToAngleOfCoordinate(currentxy, targetxy):
+    global integral_error, previous_error
+
+    #Deviation in x and y
+    dx = targetxy[0] - currentxy[0]
+    dy = targetxy[1] - currentxy[1]
+    
+    #Distance from target
+    # distance = (dx**2 + dy**2)**0.5
+    # print("Distance from target x,y:",distance,"mm")
+
+    #Calculate the angle error
+    angleError = math.atan2(dx,dy) # Angle in radians
+    angleError = 90-math.degrees(angleError) # Convert to degrees and convert by 90 deg to get correct angle
+    
+
+
+    #PID
+    proportionalValue = pControlValue * angleError #P
+    integral_error += angleError #I error
+    integralValue = iControlValue * integral_error #I
+    derivativeValue = angleError - previous_error #D
+    # print("PID CONTROLLER: Proportional Value:",proportionalValue,"Integral Value:",integralValue,"Derivative Value:",derivativeValue)
+    
+    #Avoid integral_error overflow
+    if integral_error > 300:
+        integral_error = 300
+
+    #Remember the current error for next iteration
+    previous_error = angleError
+
+    #sums P, I and D
+    steeringAngle = proportionalValue + integralValue + derivativeValue
+    
+    if steeringAngle > maxTurnAngle:
+        steeringAngle = maxTurnAngle
+        # print("max turn angle achieved.")
+    elif steeringAngle < -maxTurnAngle:
+        steeringAngle = -maxTurnAngle
+        # print("min turn angle achieved.")
+
+    
+    # print("steeringAngle:",steeringAngle)
+    # print("ServoValue:",int(deg2turnvalue(steeringAngle))) #SKAL MÅSKE KONVERTERES TIL INT
+    
+    speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
+    print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
 def main():
     # Configure depth and color streams
@@ -336,7 +425,7 @@ def main():
 
                 # Calculate the curvature of the spline
                 max_curvature, spline = predict_curvature(midpoints)
-                print(f'Maximum curvature: {max_curvature}')
+                # print(f'Maximum curvature: {max_curvature}')
 
                 # Check if the spline is not None before using itd
                 if display_plot and spline is not None:
@@ -355,7 +444,12 @@ def main():
                 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
-
+               
+                #CONTROL MODULE
+                if len(midpoints) > 0:
+                    steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
+                    
+                    
     finally:
         # Stop streaming
         pipeline.stop()
