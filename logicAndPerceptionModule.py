@@ -8,13 +8,10 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
 import serial
 
-
 startTime = time.time()
 
 halfImageWidth = 640 / 2
-FOV = 87.0
-width = 640
-focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
+
 display_plot = False
 
 #grænseværdier for gul farve i HSV
@@ -29,14 +26,14 @@ ovreBlaa = (115,255,255)
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1)
 
 #CONTROL MODULE
-speed = 100
+speed = 110
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 
 
 ###PID VALUES####
-pControlValue = 0.5 #Skal ændres ellers slettes
-iControlValue = 0.1
-dControlValue = 0.1
+pControlValue = 0.6 #Skal ændres ellers slettes
+iControlValue = 0
+dControlValue = 0.4
 
 integral_error = 0.0
 previous_error = 0.0
@@ -99,6 +96,14 @@ def calculate_midpoints(blue_cones, yellow_cones):
     # Combine blue and yellow cones into a single array for triangulation
     all_cones = np.array(blue_cones + yellow_cones)
     
+    if len(all_cones)>0 and (len(blue_cones)==0 or len(yellow_cones)==0):  
+        #IF no midpoints exist, but it sees a cone, it will avoid it
+        midpoints = []
+        if len(blue_cones)>0:
+            midpoints.append(((blue_cones[0][0]),(blue_cones[0][1]+450))) 
+        else:
+            midpoints.append(((yellow_cones[0][0]),(yellow_cones[0][1]-450)))
+        return midpoints
     
     if len(all_cones) < 4:
         midpoints = []
@@ -137,6 +142,10 @@ def calculate_midpoints(blue_cones, yellow_cones):
         return midpoints
 
 def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
+    FOV = 87.0
+    width = 640
+    focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
+    
     cartisianCoordinates = []
     for point in bottomPoints:
         cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame, focalLength, halfImageWidth))
@@ -273,11 +282,9 @@ def predict_curvature(coords):
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
 
-    spline = CubicSpline(x_coords, y_coords)
-
+    
+    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
-   
-
     curvatures = [calculate_curvature(spline, x) for x in x_smooth]
     max_curvature = np.max(curvatures)
 
@@ -356,7 +363,7 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     previous_error = angleError
 
     #sums P, I and D
-    steeringAngle = proportionalValue + integralValue + derivativeValue
+    steeringAngle = (proportionalValue + integralValue + derivativeValue)*-1 #Negative to get correct direction
     
     if steeringAngle > maxTurnAngle:
         steeringAngle = maxTurnAngle
@@ -392,62 +399,65 @@ def main():
 
     try:
         while True:
-            if time.time() - startTime > 2.5:
-                # Wait for a coherent pair of frames: depth and color
-                frames = pipeline.wait_for_frames()
-                alignedFrames = align.process(frames)
-                colorFrame = alignedFrames.get_color_frame()
-                depthFrame = alignedFrames.get_depth_frame()
-                if not colorFrame or not depthFrame:
-                    continue
+            try:
+                if time.time() - startTime > 2.5:
+                    # Wait for a coherent pair of frames: depth and color
+                    frames = pipeline.wait_for_frames()
+                    alignedFrames = align.process(frames)
+                    colorFrame = alignedFrames.get_color_frame()
+                    depthFrame = alignedFrames.get_depth_frame()
+                    if not colorFrame or not depthFrame:
+                        continue
 
-                # Convert images to numpy arrays
-                colorImage = np.asanyarray(colorFrame.get_data())
-                depthImage = np.asanyarray(depthFrame.get_data())
+                    # Convert images to numpy arrays
+                    colorImage = np.asanyarray(colorFrame.get_data())
+                    depthImage = np.asanyarray(depthFrame.get_data())
 
-                # Color map af depth image
-                depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
+                    # Color map af depth image
+                    depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
 
-                # Filter colors to get masks for yellow and blue cones
-                gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
-                blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
+                    # Filter colors to get masks for yellow and blue cones
+                    gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
+                    blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
 
-                # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
-                guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage)
-                blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage)
+                    # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
+                    guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage)
+                    blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage)
 
-                # Convert the pixel coordinates of the bottom points to Cartesian coordinates
-                guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
-                blaaCartisianCoordinates = listOfCartisianCoords(blaaBottomPoints, depthImage, blaaKegler)
+                    # Convert the pixel coordinates of the bottom points to Cartesian coordinates
+                    guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
+                    blaaCartisianCoordinates = listOfCartisianCoords(blaaBottomPoints, depthImage, blaaKegler)
 
-                # Calculate midpoints between blue and yellow cones
-                midpoints = calculate_midpoints(blaaCartisianCoordinates, guleCartisianCoordinates)
+                    # Calculate midpoints between blue and yellow cones
+                    midpoints = calculate_midpoints(blaaCartisianCoordinates, guleCartisianCoordinates)
 
-                # Calculate the curvature of the spline
-                max_curvature, spline = predict_curvature(midpoints)
-                # print(f'Maximum curvature: {max_curvature}')
+                    # Calculate the curvature of the spline
+                    max_curvature, spline = predict_curvature(midpoints)
+                    # print(f'Maximum curvature: {max_curvature}')
 
-                # Check if the spline is not None before using itd
-                if display_plot and spline is not None:
-                    plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
-               
-
-                # Combine the two images
-                combinedImage = cv2.bitwise_or(guleKegler, blaaKegler)
-
-                # Show the images
-                cv2.imshow('RealSense Depth', depthColormap)
-                cv2.imshow('gult', combinedImage)
+                    # Check if the spline is not None before using itd
+                    if display_plot and spline is not None:
+                        plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
                 
-                fig=plt.gcf()
-                fig.canvas.mpl_connect('key_press_event', close_plot)
+
+                    # Combine the two images
+                    combinedImage = cv2.bitwise_or(guleKegler, blaaKegler)
+
+                    # Show the images
+                    cv2.imshow('RealSense Depth', depthColormap)
+                    cv2.imshow('gult', combinedImage)
+                    
+                    fig=plt.gcf()
+                    fig.canvas.mpl_connect('key_press_event', close_plot)
+                    
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
                 
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
-               
-                #CONTROL MODULE
-                if len(midpoints) > 0:
-                    steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
+                    #CONTROL MODULE
+                    if len(midpoints) > 0:
+                        steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
+            except:
+                print("Error in main loop")
                     
                     
     finally:
