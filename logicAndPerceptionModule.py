@@ -15,12 +15,11 @@ display_plot = False
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
 nedreGul = (20,130,125)
-ovreGul = (55,255,255) #Hej med dig
+ovreGul = (55,255,255)
 
 #grænseværdier for blå farve i HSV
 nedreBlaa = (100,230,115)
 ovreBlaa = (115,255,255)
-#HEJ MED DIG
 
 #grænseværdier for orange farve i HSV
 nedreOrange = (0,150,170)
