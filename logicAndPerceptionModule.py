@@ -14,11 +14,11 @@ display_plot = False
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
-nedreGul = (20,130,125)
-ovreGul = (55,255,255)
+nedreGul = (18,90,115)
+ovreGul = (32,255,255)
 
 #grænseværdier for blå farve i HSV
-nedreBlaa = (100,230,115)
+nedreBlaa = (100,230,70)
 ovreBlaa = (115,255,255)
 
 #grænseværdier for orange farve i HSV
@@ -472,7 +472,7 @@ def main():
                     # Show the images
                     cv2.imshow('RealSense Depth', depthColormap)
                     cv2.imshow('Combined blue and yellow', combinedImage)
-                    cv2.imshow('Orange', orangeMask)
+                    cv2.imshow('gul', gulMask)
                     
                     fig=plt.gcf()
                     fig.canvas.mpl_connect('key_press_event', close_plot)

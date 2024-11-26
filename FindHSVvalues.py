@@ -8,10 +8,13 @@ config = rs.config()
 config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 pipeline.start(config)
 
+HSVvalues = []
+
 def get_hsv_value(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         hsv_value = hsv_frame[y, x]
         print(f"HSV Value at ({x}, {y}): {hsv_value}")
+        HSVvalues.append(hsv_value)
 
 # Create a window and set the mouse callback function
 cv2.namedWindow("RealSense")
@@ -36,6 +39,7 @@ try:
 
         # Break the loop on 'q' key press
         if cv2.waitKey(1) & 0xFF == ord('q'):
+            print(f"HSV Values: {HSVvalues}")
             break
 finally:
     # Stop streaming
