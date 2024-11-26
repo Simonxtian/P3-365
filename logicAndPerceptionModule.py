@@ -32,15 +32,15 @@ orangeSeen = False
 ######################
 
 ###CONTROL MODULE###
-speed = 110
+speed = 120
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
-pControlValue = 0.6 
+pControlValue = 0.8
 iControlValue = 0
-dControlValue = 0.4
+dControlValue = 0
 
 integral_error = 0.0
 previous_error = 0.0
@@ -104,6 +104,11 @@ def calculate_midpoints(blue_cones, yellow_cones):
     """
     # Combine blue and yellow cones into a single array for triangulation
     all_cones = np.array(blue_cones + yellow_cones)
+
+    if len(all_cones) == 0:
+        midpoints = [(10,0)]
+        return midpoints
+
     
     if len(all_cones)>0 and (len(blue_cones)==0 or len(yellow_cones)==0):  
         #IF no midpoints exist, but it sees a cone, it will avoid it
@@ -360,8 +365,6 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     #Calculate the angle error
     angleError = math.atan2(dx,dy) # Angle in radians
     angleError = 90-math.degrees(angleError) # Convert to degrees and convert by 90 deg to get correct angle
-    
-
 
     #PID
     proportionalValue = pControlValue * angleError #P
@@ -392,7 +395,7 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     # print("ServoValue:",int(deg2turnvalue(steeringAngle))) #SKAL MÅSKE KONVERTERES TIL INT
     
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
-    print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
+    #print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
 def orangeDetection(orangeCones):
     global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed
@@ -406,13 +409,15 @@ def orangeDetection(orangeCones):
         if len(orangeCones)==0:
             orangeNotSeenCount += 1
             
-            if orangeNotSeenCount > 30: #If orange cone is not seen for 100 frames
+            if orangeNotSeenCount > 5: #If orange cone is not seen for 100 frames
                 speedAngleArduino(90,90) #Stops car
                 print("CAR STOPPED - STOP LINE REACHED")
                 return True
     return False 
-
+timeNow = 0
+timeNowTotal = 0
 def main():
+    global timeNow, timeNowTotal
     # Configure depth and color streams
     pipeline = rs.pipeline()
     config = rs.config()
@@ -439,25 +444,47 @@ def main():
                     alignedFrames = align.process(frames)
                     colorFrame = alignedFrames.get_color_frame()
                     depthFrame = alignedFrames.get_depth_frame()
+
                     if not colorFrame or not depthFrame:
                         continue
+
+                    
 
                     # Convert images to numpy arrays
                     colorImage = np.asanyarray(colorFrame.get_data())
                     depthImage = np.asanyarray(depthFrame.get_data())
+                    print("timestamp 1:", timeNow - time.time())
+                    timeNow = time.time()
 
                     # Color map af depth image
-                    depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
+                    #depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
 
                     # Filter colors to get masks for yellow and blue cones
+                    print("timestamp 1:", timeNow - time.time())
+                    timeNow = time.time()
                     gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
+                    print("timestamp 2:", timeNow - time.time())
+                    timeNow = time.time()
                     blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
+                    print("timestamp 3:", timeNow - time.time())
+                    timeNow = time.time()
                     orangeMask = filterColors(colorImage, nedreOrange, ovreOrange, 11)
-
+                    
+                    print("timestamp 4:", timeNow - time.time())
+                    timeNow = time.time()
                     # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
                     guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage, True, "Gul")
+                    
+                    print("timestamp 5:", timeNow - time.time())
+                    timeNow = time.time()
                     blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage, True, "Blaa")
+                    
+                    print("timestamp 6:", timeNow - time.time())
+                    timeNow = time.time()
                     orangeKegler, orangeBottomPoints = depthSegmentation(orangeMask, depthImage, colorImage, False, "Orange")
+
+                    print("timestamp 7:", timeNow - time.time())
+                    timeNow = time.time()
 
                     # Convert the pixel coordinates of the bottom points to Cartesian coordinates
                     guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
@@ -475,7 +502,7 @@ def main():
                     # Check if the spline is not None before using itd
                     if display_plot and spline is not None:
                         plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
-                
+                    
 
                     # Combine the two images
                     # combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
@@ -489,8 +516,8 @@ def main():
                     # fig=plt.gcf()
                     # fig.canvas.mpl_connect('key_press_event', close_plot)
                     
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+                    # if cv2.waitKey(1) & 0xFF == ord('q'):
+                    #     break
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
@@ -498,6 +525,10 @@ def main():
                     
                     if orangeDetection(orangeCartisianCoordinates):
                         break
+                    
+                    #Printing hz of python code
+                    print("FPS: ", 1.0 / (time.time() - timeNowTotal))
+                    timeNowTotal = time.time()
             except:
                 print("Error in main loop")
                     
