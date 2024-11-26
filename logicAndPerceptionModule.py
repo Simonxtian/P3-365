@@ -24,6 +24,11 @@ ovreBlaa = (115,255,255)
 #grænseværdier for orange farve i HSV
 nedreOrange = (0,150,170)
 ovreOrange = (17,255,255)
+
+#Orange cones count
+orangeFrameCount = 0
+orangeNotSeenCount = 0
+orangeSeen = False
 ######################
 
 ###CONTROL MODULE###
@@ -40,6 +45,8 @@ dControlValue = 0.4
 integral_error = 0.0
 previous_error = 0.0
 #################
+
+
 
 def close_plot(event):
                     if event.key == 'q': 
@@ -387,18 +394,22 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
 def orangeDetection(orangeCones):
+    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed
     if (len(orangeCones) > 0) and not orangeSeen:
         orangeFrameCount += 1
-        if orangeFrameCount == 10: #If orange cone is seen for 10 frames
-            orangeSeen = True
         
+        if orangeFrameCount == 10: #If orange cone is seen for 10 frames
+            print("ORANGE CONE DETECTED - INITIATING STOP")
+            orangeSeen = True
     if orangeSeen:
         if len(orangeCones)==0:
             orangeNotSeenCount += 1
-            if orangeNotSeenCount == 100: #If orange cone is not seen for 100 frames
+            
+            if orangeNotSeenCount > 30: #If orange cone is not seen for 100 frames
                 speedAngleArduino(90,90) #Stops car
+                print("CAR STOPPED - STOP LINE REACHED")
                 return True
-    return False
+    return False 
 
 def main():
     # Configure depth and color streams
@@ -454,7 +465,7 @@ def main():
 
                     # Calculate midpoints between blue and yellow cones
                     midpoints = calculate_midpoints(blaaCartisianCoordinates, guleCartisianCoordinates)
-                    print(f'orangeCartisianCoordinates: {orangeCartisianCoordinates}')
+                    
 
                     # Calculate the curvature of the spline
                     max_curvature, spline = predict_curvature(midpoints)
@@ -466,16 +477,16 @@ def main():
                 
 
                     # Combine the two images
-                    combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
-                    combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
+                    # combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
+                    # combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
 
-                    # Show the images
-                    cv2.imshow('RealSense Depth', depthColormap)
-                    cv2.imshow('Combined blue and yellow', combinedImage)
-                    cv2.imshow('gul', gulMask)
+                    # # Show the images
+                    # cv2.imshow('RealSense Depth', depthColormap)
+                    # cv2.imshow('Combined blue and yellow', combinedImage)
+                    # cv2.imshow('Orange', orangeMask)
                     
-                    fig=plt.gcf()
-                    fig.canvas.mpl_connect('key_press_event', close_plot)
+                    # fig=plt.gcf()
+                    # fig.canvas.mpl_connect('key_press_event', close_plot)
                     
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
@@ -492,7 +503,8 @@ def main():
                     
     finally:
         # Stop streaming
-        pipeline.stop()
-        cv2.destroyAllWindows()
+        # pipeline.stop()
+        # cv2.destroyAllWindows()
+        print("Program ended")
 
 main()
