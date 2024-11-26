@@ -20,8 +20,11 @@ ovreGul = (55,255,255)
 #grænseværdier for blå farve i HSV
 nedreBlaa = (100,230,115)
 ovreBlaa = (115,255,255)
-######################
 
+#grænseværdier for orange farve i HSV
+nedreOrange = (0,150,170)
+ovreOrange = (17,255,255)
+######################
 
 ###CONTROL MODULE###
 speed = 110
@@ -168,7 +171,7 @@ def filterColors(colorFrame, nedre, ovre, blursize):
 
     return mask
 
-def depthSegmentation(binaryImage, depthFrame, colorFrame):
+def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
     kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask = binaryImage)
 
     # creating region of interest with bounding box around cones with information from the color image
@@ -198,7 +201,10 @@ def depthSegmentation(binaryImage, depthFrame, colorFrame):
         #finding the coordinates of the cone
         contours, hierarchy = cv2.findContours(depthMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         filteredContours = [contour for contour in contours if cv2.contourArea(contour) >= 250]
-        combinedContours = combineContours(filteredContours)
+        if combineTheContours:
+            combinedContours = combineContours(filteredContours)
+        else:
+            combinedContours = filteredContours
 
         for contour in combinedContours:
             x, y, w, h = cv2.boundingRect(contour)
@@ -216,7 +222,7 @@ def depthSegmentation(binaryImage, depthFrame, colorFrame):
             #cv2.putText(maskedImage, "Center", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
             # Writes yellow in the middle of the hull
-            cv2.putText(maskedImage, f'{minD}; {maxD}', (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(maskedImage, text, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
         # Append the masked image to the list of segmented images
         segmentedImages.append(maskedImage)
@@ -420,17 +426,21 @@ def main():
                     # Filter colors to get masks for yellow and blue cones
                     gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
                     blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
+                    orangeMask = filterColors(colorImage, nedreOrange, ovreOrange, 11)
 
                     # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
-                    guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage)
-                    blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage)
+                    guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage, True, "Gul")
+                    blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage, True, "Blaa")
+                    orangeKegler, orangeBottomPoints = depthSegmentation(orangeMask, depthImage, colorImage, False, "Orange")
 
                     # Convert the pixel coordinates of the bottom points to Cartesian coordinates
                     guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
                     blaaCartisianCoordinates = listOfCartisianCoords(blaaBottomPoints, depthImage, blaaKegler)
+                    orangeCartisianCoordinates = listOfCartisianCoords(orangeBottomPoints, depthImage, orangeKegler)
 
                     # Calculate midpoints between blue and yellow cones
                     midpoints = calculate_midpoints(blaaCartisianCoordinates, guleCartisianCoordinates)
+                    print(f'orangeCartisianCoordinates: {orangeCartisianCoordinates}')
 
                     # Calculate the curvature of the spline
                     max_curvature, spline = predict_curvature(midpoints)
@@ -442,11 +452,13 @@ def main():
                 
 
                     # Combine the two images
-                    combinedImage = cv2.bitwise_or(guleKegler, blaaKegler)
+                    combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
+                    combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
 
                     # Show the images
                     cv2.imshow('RealSense Depth', depthColormap)
-                    cv2.imshow('gult', combinedImage)
+                    cv2.imshow('Combined blue and yellow', combinedImage)
+                    cv2.imshow('Orange', orangeMask)
                     
                     fig=plt.gcf()
                     fig.canvas.mpl_connect('key_press_event', close_plot)
