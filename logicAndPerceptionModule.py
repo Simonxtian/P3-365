@@ -202,7 +202,7 @@ def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, t
     
         
     # Dybde segmentering
-    depthRanges = [(1, 300), (301, 600), (601, 900), (901, 1200), (1201, 1500), (1501, 1800), (1801, 2100), (2101, 2400), (2401, 2700), (2701, 3000)]
+    depthRanges = np.array[(1, 300), (301, 600), (601, 900), (901, 1200), (1201, 1500), (1501, 1800), (1801, 2100), (2101, 2400), (2401, 2700), (2701, 3000)]
     segmentedImages = []
     bottomPoints = []
     for minD, maxD in depthRanges:
