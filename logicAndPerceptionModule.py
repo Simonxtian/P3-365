@@ -10,10 +10,9 @@ import serial
 
 startTime = time.time()
 
-halfImageWidth = 640 / 2
-
 display_plot = False
 
+###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
 nedreGul = (20,130,125)
 ovreGul = (55,255,255)
@@ -21,17 +20,17 @@ ovreGul = (55,255,255)
 #grænseværdier for blå farve i HSV
 nedreBlaa = (100,230,115)
 ovreBlaa = (115,255,255)
+######################
 
-#Arduino
-arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1)
 
-#CONTROL MODULE
+###CONTROL MODULE###
 speed = 110
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
-
+arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
+####################
 
 ###PID VALUES####
-pControlValue = 0.6 #Skal ændres ellers slettes
+pControlValue = 0.6 
 iControlValue = 0
 dControlValue = 0.4
 
@@ -142,8 +141,10 @@ def calculate_midpoints(blue_cones, yellow_cones):
         return midpoints
 
 def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
+    
     FOV = 87.0
     width = 640
+    halfImageWidth = width / 2
     focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
     
     cartisianCoordinates = []
