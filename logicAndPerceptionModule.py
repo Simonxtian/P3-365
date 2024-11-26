@@ -386,6 +386,20 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
     print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
+def orangeDetection(orangeCones):
+    if (len(orangeCones) > 0) and not orangeSeen:
+        orangeFrameCount += 1
+        if orangeFrameCount == 10: #If orange cone is seen for 10 frames
+            orangeSeen = True
+        
+    if orangeSeen:
+        if len(orangeCones)==0:
+            orangeNotSeenCount += 1
+            if orangeNotSeenCount == 100: #If orange cone is not seen for 100 frames
+                speedAngleArduino(90,90) #Stops car
+                return True
+    return False
+
 def main():
     # Configure depth and color streams
     pipeline = rs.pipeline()
@@ -469,6 +483,9 @@ def main():
                     #CONTROL MODULE
                     if len(midpoints) > 0:
                         steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
+                    
+                    if orangeDetection(orangeCartisianCoordinates):
+                        break
             except:
                 print("Error in main loop")
                     
