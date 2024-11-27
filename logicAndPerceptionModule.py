@@ -82,7 +82,7 @@ def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_imag
     if d > 430:
         distance=math.sqrt(d**2 - 430**2)
     else:
-        distance=0
+        distance=d
 
     # Convert spherical coordinates to Cartesian
     x_cart = int(distance * math.cos(math.radians(angle)))
