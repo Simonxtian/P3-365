@@ -313,7 +313,12 @@ def predict_curvature(coords):
 def calculate_speed(curvature,v_min=100,v_max=140,max_curvature=0.0025):
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
     global speed
-    speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
+    try:
+        speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
+    except ZeroDivisionError:
+        print("Division by zero in calculate_speed")
+        speed = v_min
+    
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
