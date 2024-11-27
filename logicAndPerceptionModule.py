@@ -310,12 +310,9 @@ def predict_curvature(coords):
     avg_curvature = np.average([calculate_curvature(spline, x) for x in x_smooth])
     return avg_curvature, spline
 
-def calculate_speed(curvature):
+def calculate_speed(curvature,v_min=100,v_max=140,max_curvature=0.0025):
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
     global speed
-    v_min = 100
-    v_max = 140
-    max_curvature = 0.0025
     speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
