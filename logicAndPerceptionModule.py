@@ -34,7 +34,7 @@ tenSteps = 0
 ######################
 
 ###CONTROL MODULE###
-speed = 140
+speed = 100
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
@@ -195,76 +195,6 @@ def filterColors(colorFrame, nedre, ovre):
 
     return mask
 
-# def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
-#     kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask = binaryImage)
-
-#     # creating region of interest with bounding box around cones with information from the color image
-#     # contours, hierarchy = cv2.findContours(altFarve, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-#     # removing small contours  
-#     # contours = [contour for contour in contours if cv2.contourArea(contour) >= 1500]
-
-#     # boundingBoxes = []
-#     # for contour in contours:
-#     #     x, y, w, h = cv2.boundingRect(contour)
-#     #     boundingBoxes.append((x, y, w, h))
-#     #     # drawing bounding boxes
-#     #     if len(boundingBoxes) > 0:
-#     #         cv2.rectangle(kegleDepth, (x, y), (x+w, y+h), (0, 255, 0), 2)
-
-#     #Reducing image size to optimize performance
-#     colorFrame = cv2.resize(colorFrame, (160, 120), interpolation=cv2.INTER_AREA)
-
-    
-        
-#     # Dybde segmentering
-#     depthRanges = [(1, 300), (301, 600), (601, 900), (901, 1200), (1201, 1500), (1501, 1800), (1801, 2100), (2101, 2400), (2401, 2700), (2701, 3000)]
-#     segmentedImages = []
-#     bottomPoints = []
-#     for minD, maxD in depthRanges:
-#         # Create a binary mask for the current depth range
-#         depthMask = cv2.inRange(kegleDepth, minD, maxD)
-#         # Apply the binary mask to the color image
-#         maskedImage = cv2.bitwise_and(colorFrame, colorFrame, mask=depthMask)
-#         #finding the coordinates of the cone
-#         contours, hierarchy = cv2.findContours(depthMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-#         filteredContours = [contour for contour in contours if cv2.contourArea(contour) >= 250]
-#         if combineTheContours:
-#             combinedContours = combineContours(filteredContours)
-#         else:
-#             combinedContours = filteredContours
-
-#         for contour in combinedContours:
-#             x, y, w, h = cv2.boundingRect(contour)
-#             cv2.rectangle(maskedImage, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-#             # Calculate the bottom point of the bounding box
-#             bottom_point = (x + w // 2, y + h, w)
-#             bottomPoints.append(bottom_point)
-#             cv2.circle(maskedImage, (bottom_point[0], bottom_point[1]), 5, (0, 0, 255), -1)
-#             cv2.putText(maskedImage, "Bottom", (bottom_point[0], bottom_point[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-
-#             # Calculate the centroid of the bounding box
-#             cX = x + w // 2
-#             cY = y + h // 2
-#             #cv2.putText(maskedImage, "Center", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-#             # Writes yellow in the middle of the hull
-#             cv2.putText(maskedImage, text, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
-#         # Append the masked image to the list of segmented images
-#         segmentedImages.append(maskedImage)
-
-#         # cv2.imshow(f'Segmented Image {min_d}; {max_d}', masked_image)
-#         # cv2.waitKey(0)
-
-#     # Combine all segmented images into a single image
-#     combinedImage = np.zeros_like(colorFrame)
-#     for image in segmentedImages:
-#         combinedImage = cv2.bitwise_or(combinedImage, image)
-
-#     return combinedImage, bottomPoints
-
 def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
     global timeNow
     # Apply the binary mask to the depth frame
@@ -353,7 +283,7 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
-        # print("Insufficient points to calculate curvature.")
+        print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -367,15 +297,18 @@ def predict_curvature(coords):
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
 
-    
-    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
+    spline = CubicSpline(x_coords, y_coords)
+
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
-    curvatures = [calculate_curvature(spline, x) for x in x_smooth]
-    max_curvature = np.max(curvatures)
 
-    
+    # Calculates the curvature of the spline at each point
+    avg_curvature = np.average([calculate_curvature(spline, x) for x in x_smooth])
+    return avg_curvature, spline
 
-    return max_curvature, spline
+def calculate_speed(curvature,v_min=100,v_max=140,max_curvature=0.0025):
+    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+    global speed
+    speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
