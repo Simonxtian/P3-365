@@ -288,7 +288,7 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
-        # print("Insufficient points to calculate curvature.")
+        print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -302,15 +302,21 @@ def predict_curvature(coords):
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
 
-    
-    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
+    spline = CubicSpline(x_coords, y_coords)
+
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
-    curvatures = [calculate_curvature(spline, x) for x in x_smooth]
-    max_curvature = np.max(curvatures)
 
-    
+    # Calculates the curvature of the spline at each point
+    avg_curvature = np.average([calculate_curvature(spline, x) for x in x_smooth])
+    return avg_curvature, spline
 
-    return max_curvature, spline
+def calculate_speed(curvature):
+    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+    v_min = 100
+    v_max = 140
+    max_curvature = 0.0025
+    speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
+    return speed
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
