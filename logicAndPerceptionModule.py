@@ -22,29 +22,41 @@ nedreBlaa = (100,230,70)
 ovreBlaa = (115,255,255)
 
 #grænseværdier for orange farve i HSV
-nedreOrange = (0,150,170)
+nedreOrange = (5,200,230)
 ovreOrange = (17,255,255)
 
 #Orange cones count
 orangeFrameCount = 0
 orangeNotSeenCount = 0
 orangeSeen = False
+speedRunOnce = False
+tenSteps = 0
 ######################
 
 ###CONTROL MODULE###
-speed = 120
+speed = 140
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
-pControlValue = 0.8
-iControlValue = 0
-dControlValue = 0
+pControlValue = 0.9
+iControlValue = 0.00
+dControlValue = 0.1
 
 integral_error = 0.0
 previous_error = 0.0
 #################
+
+
+###FPS FIX###
+timeNow = 0
+timeNowTotal = 0
+stopTime = 0
+#############
+
+
+
 
 
 
@@ -114,9 +126,9 @@ def calculate_midpoints(blue_cones, yellow_cones):
         #IF no midpoints exist, but it sees a cone, it will avoid it
         midpoints = []
         if len(blue_cones)>0:
-            midpoints.append(((blue_cones[0][0]),(blue_cones[0][1]+450))) 
+            midpoints.append(((blue_cones[0][0]),(blue_cones[0][1]+525))) 
         else:
-            midpoints.append(((yellow_cones[0][0]),(yellow_cones[0][1]-450)))
+            midpoints.append(((yellow_cones[0][0]),(yellow_cones[0][1]-525)))
         return midpoints
     
     if len(all_cones) < 4:
@@ -158,7 +170,7 @@ def calculate_midpoints(blue_cones, yellow_cones):
 def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
     
     FOV = 87.0
-    width = 640
+    width = 424
     halfImageWidth = width / 2
     focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
     
@@ -167,86 +179,140 @@ def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
         cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame, focalLength, halfImageWidth))
     return cartisianCoordinates
 
-def filterColors(colorFrame, nedre, ovre, blursize):
+def filterColors(colorFrame, nedre, ovre):
     # Konverterer framen til hsv farveskalaen så vi bedre kan arbejde med den
     hsvFrame = cv2.cvtColor(colorFrame, cv2.COLOR_BGR2HSV)
         
-    # Finder farverne i billedet
+    # # Finder farverne i billedet
     mask = cv2.inRange(hsvFrame, nedre, ovre)
 
-    # median blur
-    mask = cv2.medianBlur(mask, blursize)
+    # # median blur
+    mask = cv2.medianBlur(mask, 5)
 
     # Filtrerer små hvide steder fra
     # altFarve = cv2.morphologyEx(altFarve, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((10,10),np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
 
     return mask
 
-def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
-    kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask = binaryImage)
+# def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
+#     kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask = binaryImage)
 
-    # creating region of interest with bounding box around cones with information from the color image
-    # contours, hierarchy = cv2.findContours(altFarve, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+#     # creating region of interest with bounding box around cones with information from the color image
+#     # contours, hierarchy = cv2.findContours(altFarve, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    # removing small contours  
-    # contours = [contour for contour in contours if cv2.contourArea(contour) >= 1500]
+#     # removing small contours  
+#     # contours = [contour for contour in contours if cv2.contourArea(contour) >= 1500]
 
-    # boundingBoxes = []
-    # for contour in contours:
-    #     x, y, w, h = cv2.boundingRect(contour)
-    #     boundingBoxes.append((x, y, w, h))
-    #     # drawing bounding boxes
-    #     if len(boundingBoxes) > 0:
-    #         cv2.rectangle(kegleDepth, (x, y), (x+w, y+h), (0, 255, 0), 2)
+#     # boundingBoxes = []
+#     # for contour in contours:
+#     #     x, y, w, h = cv2.boundingRect(contour)
+#     #     boundingBoxes.append((x, y, w, h))
+#     #     # drawing bounding boxes
+#     #     if len(boundingBoxes) > 0:
+#     #         cv2.rectangle(kegleDepth, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+#     #Reducing image size to optimize performance
+#     colorFrame = cv2.resize(colorFrame, (160, 120), interpolation=cv2.INTER_AREA)
+
     
         
-    # Dybde segmentering
-    depthRanges = np.array[(1, 300), (301, 600), (601, 900), (901, 1200), (1201, 1500), (1501, 1800), (1801, 2100), (2101, 2400), (2401, 2700), (2701, 3000)]
+#     # Dybde segmentering
+#     depthRanges = [(1, 300), (301, 600), (601, 900), (901, 1200), (1201, 1500), (1501, 1800), (1801, 2100), (2101, 2400), (2401, 2700), (2701, 3000)]
+#     segmentedImages = []
+#     bottomPoints = []
+#     for minD, maxD in depthRanges:
+#         # Create a binary mask for the current depth range
+#         depthMask = cv2.inRange(kegleDepth, minD, maxD)
+#         # Apply the binary mask to the color image
+#         maskedImage = cv2.bitwise_and(colorFrame, colorFrame, mask=depthMask)
+#         #finding the coordinates of the cone
+#         contours, hierarchy = cv2.findContours(depthMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+#         filteredContours = [contour for contour in contours if cv2.contourArea(contour) >= 250]
+#         if combineTheContours:
+#             combinedContours = combineContours(filteredContours)
+#         else:
+#             combinedContours = filteredContours
+
+#         for contour in combinedContours:
+#             x, y, w, h = cv2.boundingRect(contour)
+#             cv2.rectangle(maskedImage, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+#             # Calculate the bottom point of the bounding box
+#             bottom_point = (x + w // 2, y + h, w)
+#             bottomPoints.append(bottom_point)
+#             cv2.circle(maskedImage, (bottom_point[0], bottom_point[1]), 5, (0, 0, 255), -1)
+#             cv2.putText(maskedImage, "Bottom", (bottom_point[0], bottom_point[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+#             # Calculate the centroid of the bounding box
+#             cX = x + w // 2
+#             cY = y + h // 2
+#             #cv2.putText(maskedImage, "Center", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+#             # Writes yellow in the middle of the hull
+#             cv2.putText(maskedImage, text, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+#         # Append the masked image to the list of segmented images
+#         segmentedImages.append(maskedImage)
+
+#         # cv2.imshow(f'Segmented Image {min_d}; {max_d}', masked_image)
+#         # cv2.waitKey(0)
+
+#     # Combine all segmented images into a single image
+#     combinedImage = np.zeros_like(colorFrame)
+#     for image in segmentedImages:
+#         combinedImage = cv2.bitwise_or(combinedImage, image)
+
+#     return combinedImage, bottomPoints
+
+def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
+    global timeNow
+    # Apply the binary mask to the depth frame
+    kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask=binaryImage)
+    
+
+    depthRanges = [(i, i + 300 - 1) for i in range(1, 3001, 300)]
+    # Initialize variables
     segmentedImages = []
     bottomPoints = []
+    
+    # Pre-create an output image
+    combinedImage = np.zeros_like(colorFrame)
+    
+    # Loop through ranges, this part can still use for-loop due to sequential bounding
     for minD, maxD in depthRanges:
-        # Create a binary mask for the current depth range
-        depthMask = cv2.inRange(kegleDepth, minD, maxD)
-        # Apply the binary mask to the color image
+        depthMask = (kegleDepth >= minD) & (kegleDepth <= maxD)
+        depthMask = depthMask.astype(np.uint8) * 255  # Convert to binary mask
         maskedImage = cv2.bitwise_and(colorFrame, colorFrame, mask=depthMask)
-        #finding the coordinates of the cone
-        contours, hierarchy = cv2.findContours(depthMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        filteredContours = [contour for contour in contours if cv2.contourArea(contour) >= 250]
-        if combineTheContours:
-            combinedContours = combineContours(filteredContours)
-        else:
-            combinedContours = filteredContours
+    
 
-        for contour in combinedContours:
+        contours, _ = cv2.findContours(depthMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        filteredContours = [contour for contour in contours if cv2.contourArea(contour) >= 50]
+        
+        
+        # Combine contours if required
+        if combineTheContours:
+            filteredContours = combineContours(filteredContours)
+           
+        #Sort out the contours that are too small
+        filteredContours= [contour for contour in filteredContours if cv2.contourArea(contour) >= 100]
+        
+        for contour in filteredContours:
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(maskedImage, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            # Calculate the bottom point of the bounding box
             bottom_point = (x + w // 2, y + h, w)
             bottomPoints.append(bottom_point)
             cv2.circle(maskedImage, (bottom_point[0], bottom_point[1]), 5, (0, 0, 255), -1)
             cv2.putText(maskedImage, "Bottom", (bottom_point[0], bottom_point[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
-            # Calculate the centroid of the bounding box
             cX = x + w // 2
             cY = y + h // 2
-            #cv2.putText(maskedImage, "Center", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            # Writes yellow in the middle of the hull
             cv2.putText(maskedImage, text, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
-        # Append the masked image to the list of segmented images
-        segmentedImages.append(maskedImage)
-
-        # cv2.imshow(f'Segmented Image {min_d}; {max_d}', masked_image)
-        # cv2.waitKey(0)
-
-    # Combine all segmented images into a single image
-    combinedImage = np.zeros_like(colorFrame)
-    for image in segmentedImages:
-        combinedImage = cv2.bitwise_or(combinedImage, image)
-
+        
+        combinedImage = cv2.bitwise_or(combinedImage, maskedImage) #TAR LANG TID
+        
+    
     return combinedImage, bottomPoints
 
 def combineContours(contours):
@@ -346,6 +412,7 @@ def speedAngleArduino(localspeed,angle):
     # print("Value send to arduino",val)
     arduino.write(bytes(val, 'utf-8'))
     # time.sleep(0.05)
+    #print("Value Written to arduino",val)
 
 def deg2turnvalue(deg):
     return 90 + deg*90/maxTurnAngle # 37 is the max turn angle in degrees      -      90 is the middle for the servo(0-180)
@@ -373,8 +440,8 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     # print("PID CONTROLLER: Proportional Value:",proportionalValue,"Integral Value:",integralValue,"Derivative Value:",derivativeValue)
     
     #Avoid integral_error overflow
-    if integral_error > 300:
-        integral_error = 300
+    if integral_error > 500:
+        integral_error = 500
 
     #Remember the current error for next iteration
     previous_error = angleError
@@ -396,32 +463,46 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
     #print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
-def orangeDetection(orangeCones):
-    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed
+def stopLineDetection(orangeCones):
+    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, speedRunOnce, tenSteps
     if (len(orangeCones) > 0) and not orangeSeen:
         orangeFrameCount += 1
         
-        if orangeFrameCount == 10: #If orange cone is seen for 10 frames
+        if orangeFrameCount == 5: #If orange cone is seen for 5 frames
             print("ORANGE CONE DETECTED - INITIATING STOP")
             orangeSeen = True
+
     if orangeSeen:
         if len(orangeCones)==0:
             orangeNotSeenCount += 1
             
-            if orangeNotSeenCount > 5: #If orange cone is not seen for 100 frames
-                speedAngleArduino(90,90) #Stops car
-                print("CAR STOPPED - STOP LINE REACHED")
-                return True
+            if orangeNotSeenCount > 5: #If orange cone is not seen for 5 frames
+                #Descelerate over a period of 2 seconds while running main function
+                
+                if not speedRunOnce:
+                    print("STOP LINE REACHED - STOPPING CAR")
+                    speedRunOnce = True
+                    tenSteps = -(speed-90)//10
+
+
+                if time.time() - stopTime > 0.2:
+                    stopTime = time.time()
+                    speed += tenSteps
+                    
+
+                if speed < 91:
+                    speedAngleArduino(90,90)
+                    return True
+            
     return False 
-timeNow = 0
-timeNowTotal = 0
+
 def main():
     global timeNow, timeNowTotal
     # Configure depth and color streams
     pipeline = rs.pipeline()
     config = rs.config()
-    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+    config.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, 60)
+    config.enable_stream(rs.stream.color, 424, 240, rs.format.bgr8, 60)
 
     # Start streaming
     pipeline.start(config)
@@ -437,7 +518,7 @@ def main():
     try:
         while True:
             try:
-                if time.time() - startTime > 2.5:
+                if time.time() - startTime > 5:
                     # Wait for a coherent pair of frames: depth and color
                     frames = pipeline.wait_for_frames()
                     alignedFrames = align.process(frames)
@@ -447,43 +528,28 @@ def main():
                     if not colorFrame or not depthFrame:
                         continue
 
-                    
-
                     # Convert images to numpy arrays
                     colorImage = np.asanyarray(colorFrame.get_data())
                     depthImage = np.asanyarray(depthFrame.get_data())
-                    print("timestamp 1:", timeNow - time.time())
-                    timeNow = time.time()
-
-                    # Color map af depth image
-                    #depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
-
-                    # Filter colors to get masks for yellow and blue cones
-                    print("timestamp 1:", timeNow - time.time())
-                    timeNow = time.time()
-                    gulMask = filterColors(colorImage, nedreGul, ovreGul, 5)
-                    print("timestamp 2:", timeNow - time.time())
-                    timeNow = time.time()
-                    blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa, 11)
-                    print("timestamp 3:", timeNow - time.time())
-                    timeNow = time.time()
-                    orangeMask = filterColors(colorImage, nedreOrange, ovreOrange, 11)
                     
-                    print("timestamp 4:", timeNow - time.time())
-                    timeNow = time.time()
+                    # Filter colors to get masks for yellow and blue cones
+                    
+                    gulMask = filterColors(colorImage, nedreGul, ovreGul)
+                   
+                    blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa)
+                    
+                    orangeMask = filterColors(colorImage, nedreOrange, ovreOrange)
+                    
+                    
                     # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
                     guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage, True, "Gul")
                     
-                    print("timestamp 5:", timeNow - time.time())
-                    timeNow = time.time()
+                    
                     blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage, True, "Blaa")
                     
-                    print("timestamp 6:", timeNow - time.time())
-                    timeNow = time.time()
+                    
                     orangeKegler, orangeBottomPoints = depthSegmentation(orangeMask, depthImage, colorImage, False, "Orange")
 
-                    print("timestamp 7:", timeNow - time.time())
-                    timeNow = time.time()
 
                     # Convert the pixel coordinates of the bottom points to Cartesian coordinates
                     guleCartisianCoordinates = listOfCartisianCoords(guleBottomPoints, depthImage, guleKegler)
@@ -502,28 +568,31 @@ def main():
                     if display_plot and spline is not None:
                         plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
                     
-
+                    #DISPLAY NEDENFOR (UDKOMMENTER)
+                    # Color map af depth image UDKOMMENTER
+                    depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
                     # Combine the two images
-                    # combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
-                    # combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
-
-                    # # Show the images
-                    # cv2.imshow('RealSense Depth', depthColormap)
-                    # cv2.imshow('Combined blue and yellow', combinedImage)
-                    # cv2.imshow('Orange', orangeMask)
+                    combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
+                    combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
+                    # Show the images
+                    cv2.imshow('RealSense Depth', depthColormap)
+                    cv2.imshow('Combined blue and yellow', combinedImage)
+                    cv2.imshow('Orange', orangeMask)
+                    fig=plt.gcf()
+                    fig.canvas.mpl_connect('key_press_event', close_plot)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+                        
                     
-                    # fig=plt.gcf()
-                    # fig.canvas.mpl_connect('key_press_event', close_plot)
-                    
-                    # if cv2.waitKey(1) & 0xFF == ord('q'):
-                    #     break
+                    if stopLineDetection(orangeCartisianCoordinates):
+                        
+                        print("speed",speed)
+                        #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
+                        break
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
                         steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
-                    
-                    if orangeDetection(orangeCartisianCoordinates):
-                        break
                     
                     #Printing hz of python code
                     print("FPS: ", 1.0 / (time.time() - timeNowTotal))
@@ -534,8 +603,9 @@ def main():
                     
     finally:
         # Stop streaming
-        # pipeline.stop()
-        # cv2.destroyAllWindows()
+        speedAngleArduino(90,90)#MAKE SURE THE CAR STOPS
+        pipeline.stop()
+        cv2.destroyAllWindows()
         print("Program ended")
 
 main()
