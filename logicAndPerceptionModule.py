@@ -32,7 +32,7 @@ orangeSeen = False
 ######################
 
 ###CONTROL MODULE###
-speed = 120
+speed = 100
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
@@ -312,11 +312,11 @@ def predict_curvature(coords):
 
 def calculate_speed(curvature):
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+    global speed
     v_min = 100
     v_max = 140
     max_curvature = 0.0025
     speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
-    return speed
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
