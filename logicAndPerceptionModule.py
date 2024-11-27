@@ -34,7 +34,7 @@ tenSteps = 0
 ######################
 
 ###CONTROL MODULE###
-speed = 100
+speed = 110
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
@@ -297,29 +297,32 @@ def predict_curvature(coords):
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
 
-    spline = CubicSpline(x_coords, y_coords)
+    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
 
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
 
     # Calculates the curvature of the spline at each point
     avg_curvature = np.average([calculate_curvature(spline, x) for x in x_smooth])
     return avg_curvature, spline
+        
 
-def calculate_speed(curvature,v_min=100,v_max=140,max_curvature=0.0025):
-    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+def calculate_speed(curvature):
     global speed
-    try:
-        speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
-    except ZeroDivisionError:
-        print("Division by zero in calculate_speed")
-        speed = v_min
-
-def calculate_speed(curvature,v_min=100,v_max=140,max_curvature=0.0025):
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    global speed
+    v_min=110
+    v_max=130
+    max_curvature=0.001
+    
     try:
-        speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
-    except ZeroDivisionError:
+        speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
+        #print("Curvature:",curvature)
+        
+        if speed > v_max:
+            speed = v_max
+        elif speed < v_min:
+            speed = v_min
+        print("Speed:",speed)
+    except:
         print("Division by zero in calculate_speed")
         speed = v_min
     
@@ -508,7 +511,7 @@ def main():
                     
 
                     # Calculate the curvature of the spline
-                    max_curvature, spline = predict_curvature(midpoints)
+                    averageCurvature, spline = predict_curvature(midpoints)
                     # print(f'Maximum curvature: {max_curvature}')
 
                     # Check if the spline is not None before using itd
@@ -530,7 +533,8 @@ def main():
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                         
-                    
+                    calculate_speed(averageCurvature)
+
                     if stopLineDetection(orangeCartisianCoordinates):
                         
                         print("speed",speed)
