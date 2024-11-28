@@ -10,7 +10,7 @@ import serial
 
 startTime = time.time()
 
-display_plot = False
+display_plot = True
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
@@ -22,15 +22,17 @@ nedreBlaa = (100,190,60)
 ovreBlaa = (115,255,255)
 
 #grænseværdier for orange farve i HSV
-nedreOrange = (5,200,230)
+nedreOrange = (2,200,170)
 ovreOrange = (17,255,255)
+
 
 #Orange cones count
 orangeFrameCount = 0
 orangeNotSeenCount = 0
 orangeSeen = False
-speedRunOnce = False
+allLapsCompleted = False
 tenSteps = 0
+lapCount = 0
 ######################
 
 ###CONTROL MODULE###
@@ -55,16 +57,15 @@ timeNowTotal = 0
 stopTime = 0
 #############
 
+
+
+
+
+
 def close_plot(event):
                     if event.key == 'q': 
                         plt.close()
 
-def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_image_width):
-    """
-    - focal_length: The focal length of the camera in pixels.
-    - image_width: The width of the image in pixels.
-
-    Returns:
 def get_cartesian_coordinates(x, y, w, depth_image, img):
     # Calculate horizontal angle of the object from the center of the image
     halfImageWidth = 211
@@ -93,6 +94,7 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     y_cart = int(distance * math.sin(polarangle)) * math.sin(azimuthangle)
 
     return x_cart, y_cart
+
 
 def calculate_midpoints(blue_cones, yellow_cones):
     """
@@ -180,6 +182,7 @@ def filterColors(colorFrame, nedre, ovre):
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
 
     return mask
+
 
 def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
     global timeNow
@@ -269,7 +272,7 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
-        print("Insufficient points to calculate curvature.")
+        # print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -283,35 +286,15 @@ def predict_curvature(coords):
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
 
+    
     spline = CubicSpline(x_coords, y_coords, bc_type='natural')
-
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
+    curvatures = [calculate_curvature(spline, x) for x in x_smooth]
+    max_curvature = np.max(curvatures)
 
-    # Calculates the curvature of the spline at each point
-    avg_curvature = np.average([calculate_curvature(spline, x) for x in x_smooth])
-    return avg_curvature, spline
-        
+    
 
-def calculate_speed(curvature):
-    global speed
-    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    v_min=110
-    v_max=130
-    max_curvature=0.001
-    
-    try:
-        speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
-        #print("Curvature:",curvature)
-        
-        if speed > v_max:
-            speed = v_max
-        elif speed < v_min:
-            speed = v_min
-        print("Speed:",speed)
-    except:
-        print("Division by zero in calculate_speed")
-        speed = v_min
-    
+    return max_curvature, spline
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
@@ -399,8 +382,28 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
     #print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
+def calculate_speed(curvature):
+    global speed
+    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+    v_min=105
+    v_max=120
+    max_curvature=0.001
+    
+    try:
+        speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
+        #print("Curvature:",curvature)
+        
+        if speed > v_max:
+            speed = v_max
+        elif speed < v_min:
+            speed = v_min
+        print("Speed:",speed)
+    except:
+        print("Division by zero in calculate_speed")
+        speed = v_min
+
 def stopLineDetection(orangeCones):
-    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, speedRunOnce, tenSteps
+    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, allLapsCompleted, tenSteps, lapCount
     if (len(orangeCones) > 0) and not orangeSeen:
         orangeFrameCount += 1
         
@@ -415,18 +418,29 @@ def stopLineDetection(orangeCones):
             if orangeNotSeenCount > 5: #If orange cone is not seen for 5 frames
                 #Descelerate over a period of 2 seconds while running main function
                 
-                if not speedRunOnce:
-                    print("STOP LINE REACHED - STOPPING CAR")
-                    speedRunOnce = True
-                    tenSteps = -(speed-90)//10
-
-                if time.time() - stopTime > 0.2:
-                    stopTime = time.time()
-                    speed += tenSteps
+                    print("STOP LINE REACHED")
+                    lapCount += 1
                     
-                if speed < 91:
-                    speedAngleArduino(90,90)
-                    return True
+
+                    if lapCount >= 1:
+                        print("10 LAP COMPLETED - STOPPING CAR")
+                        if not allLapsCompleted:
+                            allLapsCompleted = True
+                            tenSteps = (speed-90)//10
+
+                        if time.time() - stopTime > 0.2:
+                            stopTime = time.time()
+                            speed -= tenSteps
+
+                        if speed < 91:
+                            speedAngleArduino(90,90)
+                            speed = 90
+                            print("speed",speed)
+                            return True
+                    else:   
+                        orangeSeen = False
+                        orangeFrameCount = 0
+                        orangeNotSeenCount = 0
             
     return False 
 
@@ -451,7 +465,7 @@ def main():
 
     try:
         while True:
-            #try:
+            try:
                 if time.time() - startTime > 5:
                     # Wait for a coherent pair of frames: depth and color
                     frames = pipeline.wait_for_frames()
@@ -467,14 +481,21 @@ def main():
                     depthImage = np.asanyarray(depthFrame.get_data())
                     
                     # Filter colors to get masks for yellow and blue cones
+                    
                     gulMask = filterColors(colorImage, nedreGul, ovreGul)
+                   
                     blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa)
+                    
                     orangeMask = filterColors(colorImage, nedreOrange, ovreOrange)
                     
                     
                     # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
                     guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage, True, "Gul")
+                    
+                    
                     blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage, True, "Blaa")
+                    
+                    
                     orangeKegler, orangeBottomPoints = depthSegmentation(orangeMask, depthImage, colorImage, False, "Orange")
 
 
@@ -510,13 +531,15 @@ def main():
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                         
-                    calculate_speed(averageCurvature)
+                    
 
                     if stopLineDetection(orangeCartisianCoordinates):
                         
                         print("speed",speed)
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
                         break
+                    elif not allLapsCompleted:
+                        calculate_speed(averageCurvature)
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
@@ -525,8 +548,8 @@ def main():
                     #Printing hz of python code
                     print("FPS: ", 1.0 / (time.time() - timeNowTotal))
                     timeNowTotal = time.time()
-            #except:
-                #print("Error in main loop")
+            except:
+                print("Error in main loop")
                     
                     
     finally:
