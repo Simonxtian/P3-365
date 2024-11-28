@@ -61,24 +61,21 @@ def close_plot(event):
 
 def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_image_width):
     """
-    Converts pixel coordinates (x, y) of an object in an image to Cartesian coordinates
-    relative to the camera, using the depth frame to calculate distance and focal length
-    to calculate the angle.
-
-    Parameters:
-    - x, y: Pixel coordinates of the object.
-    - depth_frame: The depth frame from which to retrieve the object's distance.
     - focal_length: The focal length of the camera in pixels.
     - image_width: The width of the image in pixels.
 
     Returns:
-    - (x_cart, y_cart): Tuple of Cartesian coordinates in millimeters (integers).
-    """
-    
-    
+def get_cartesian_coordinates(x, y, w, depth_image, img):
     # Calculate horizontal angle of the object from the center of the image
-    dx = x - half_image_width
-    angle = math.degrees(math.atan(dx / focal_length))
+    halfImageWidth = 211
+    halfImageHeight = 120.6
+    focalLength = 210.06
+    
+    dx = x - halfImageWidth
+    dy = y - halfImageHeight
+
+    azimuthangle = math.atan2(dx,focalLength)
+    polarangle = math.pi/2 - math.atan2(dy,focalLength)
 
     # Get distance from the depth frame
     bbox = (x-w//5, y-w*2//5, w*2//5, w*2//5)
@@ -92,8 +89,8 @@ def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_imag
         distance=d
 
     # Convert spherical coordinates to Cartesian
-    x_cart = int(distance * math.cos(math.radians(angle)))
-    y_cart = int(distance * math.sin(math.radians(angle)))
+    x_cart = int(1.0223*(distance * math.sin(polarangle)) * math.cos(azimuthangle))
+    y_cart = int(distance * math.sin(polarangle)) * math.sin(azimuthangle)
 
     return x_cart, y_cart
 
@@ -163,15 +160,9 @@ def calculate_midpoints(blue_cones, yellow_cones):
         return midpoints
 
 def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
-    
-    FOV = 87.0
-    width = 424
-    halfImageWidth = width / 2
-    focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
-    
     cartisianCoordinates = []
     for point in bottomPoints:
-        cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame, focalLength, halfImageWidth))
+        cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame))
     return cartisianCoordinates
 
 def filterColors(colorFrame, nedre, ovre):
@@ -460,7 +451,7 @@ def main():
 
     try:
         while True:
-            try:
+            #try:
                 if time.time() - startTime > 5:
                     # Wait for a coherent pair of frames: depth and color
                     frames = pipeline.wait_for_frames()
@@ -534,8 +525,8 @@ def main():
                     #Printing hz of python code
                     print("FPS: ", 1.0 / (time.time() - timeNowTotal))
                     timeNowTotal = time.time()
-            except:
-                print("Error in main loop")
+            #except:
+                #print("Error in main loop")
                     
                     
     finally:
