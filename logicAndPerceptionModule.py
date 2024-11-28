@@ -18,7 +18,7 @@ nedreGul = (18,90,115)
 ovreGul = (32,255,255)
 
 #grænseværdier for blå farve i HSV
-nedreBlaa = (100,230,70)
+nedreBlaa = (100,190,60)
 ovreBlaa = (115,255,255)
 
 #grænseværdier for orange farve i HSV
@@ -54,11 +54,6 @@ timeNow = 0
 timeNowTotal = 0
 stopTime = 0
 #############
-
-
-
-
-
 
 def close_plot(event):
                     if event.key == 'q': 
@@ -434,12 +429,10 @@ def stopLineDetection(orangeCones):
                     speedRunOnce = True
                     tenSteps = -(speed-90)//10
 
-
                 if time.time() - stopTime > 0.2:
                     stopTime = time.time()
                     speed += tenSteps
                     
-
                 if speed < 91:
                     speedAngleArduino(90,90)
                     return True
@@ -483,21 +476,14 @@ def main():
                     depthImage = np.asanyarray(depthFrame.get_data())
                     
                     # Filter colors to get masks for yellow and blue cones
-                    
                     gulMask = filterColors(colorImage, nedreGul, ovreGul)
-                   
                     blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa)
-                    
                     orangeMask = filterColors(colorImage, nedreOrange, ovreOrange)
                     
                     
                     # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
                     guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage, True, "Gul")
-                    
-                    
                     blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage, True, "Blaa")
-                    
-                    
                     orangeKegler, orangeBottomPoints = depthSegmentation(orangeMask, depthImage, colorImage, False, "Orange")
 
 
