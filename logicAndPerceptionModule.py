@@ -10,7 +10,7 @@ import serial
 
 startTime = time.time()
 
-display_plot = True
+display_plot = False
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
@@ -97,7 +97,8 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     else:
         distance=d
 
-    world_coords = np.linalg.norm(np.linalg.dot(P_inv, np.array([x, y, 1])))*d
+    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*d
+    print("world_coords",world_coords)
     y_cart = world_coords[0]
     x_cart = world_coords[2]
     print('x', x_cart)
@@ -474,7 +475,7 @@ def main():
 
     try:
         while True:
-            try:
+            # try:
                 if time.time() - startTime > 5:
                     # Wait for a coherent pair of frames: depth and color
                     frames = pipeline.wait_for_frames()
@@ -557,8 +558,8 @@ def main():
                     #Printing hz of python code
                     print("FPS: ", 1.0 / (time.time() - timeNowTotal))
                     timeNowTotal = time.time()
-            except:
-                print("Error in main loop")
+            # except:
+            #     print("Error in main loop")
                     
                     
     finally:
