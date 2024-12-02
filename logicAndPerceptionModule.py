@@ -42,9 +42,9 @@ arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
-pControlValue = 0.9
+pControlValue = 5
 iControlValue = 0.00
-dControlValue = 0.1
+dControlValue = 0.00
 
 integral_error = 0.0
 previous_error = 0.0
@@ -97,7 +97,10 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     else:
         distance=d
 
-    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*d
+    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*distance
+    norm = np.linalg.norm(world_coords)
+    world_coords = world_coords/norm
+
     print("world_coords",world_coords)
     y_cart = world_coords[0]
     x_cart = world_coords[2]
@@ -346,6 +349,29 @@ def speedAngleArduino(localspeed,angle):
 def deg2turnvalue(deg):
     return 90 + deg*90/maxTurnAngle # 37 is the max turn angle in degrees      -      90 is the middle for the servo(0-180)
 
+
+time_values = []
+steering_angle_values = []
+
+def plot_steering_angle(steering_angle, max_duration=10):
+    current_time = time.time()
+    time_values.append(current_time)
+    steering_angle_values.append(steering_angle)
+    
+    # Remove old data beyond the max_duration
+    while time_values and (current_time - time_values[0] > max_duration):
+        time_values.pop(0)
+        steering_angle_values.pop(0)
+    
+    plt.figure(figsize=(10, 5))
+    plt.plot([t - time_values[0] for t in time_values], steering_angle_values, label='Steering Angle')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Steering Angle')
+    plt.title('Steering Angle Over Time')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 def steerToAngleOfCoordinate(currentxy, targetxy):
     global integral_error, previous_error
 
@@ -378,13 +404,15 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     #sums P, I and D
     steeringAngle = (proportionalValue + integralValue + derivativeValue)*-1 #Negative to get correct direction
     
+   
+
     if steeringAngle > maxTurnAngle:
         steeringAngle = maxTurnAngle
         # print("max turn angle achieved.")
     elif steeringAngle < -maxTurnAngle:
         steeringAngle = -maxTurnAngle
         # print("min turn angle achieved.")
-
+    
     
     # print("steeringAngle:",steeringAngle)
     # print("ServoValue:",int(deg2turnvalue(steeringAngle))) #SKAL MÅSKE KONVERTERES TIL INT
@@ -396,7 +424,7 @@ def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
     v_min=105
-    v_max=120
+    v_max=105
     max_curvature=0.001
     
     try:
@@ -454,8 +482,38 @@ def stopLineDetection(orangeCones):
             
     return False 
 
+# Initialize variables to store steering angles and timestamps
+steering_angles = [90, 90,90]
+timestamps = []
+
+
+# Function to track steering angle
+def track_steering_angle(steeringAngle):
+    global steering_angles, timestamps
+    steering_angles.append(steeringAngle)
+    timestamps.append(time.time())
+
+# Function to find peaks and troughs
+def find_peaks_and_troughs(angles):
+    peaks = []
+    troughs = []
+    for i in range(1, len(angles) - 1):
+        if angles[i] > angles[i - 1] and angles[i] > angles[i + 1]:
+            peaks.append(i)
+        elif angles[i] < angles[i - 1] and angles[i] < angles[i + 1]:
+            troughs.append(i)
+    return peaks, troughs
+
+# Function to calculate oscillation period
+def calculate_oscillation_period(timestamps, indices):
+    periods = []
+    for i in range(1, len(indices)):
+        period = timestamps[indices[i]] - timestamps[indices[i - 1]]
+        periods.append(period)
+    return periods
+
 def main():
-    global timeNow, timeNowTotal
+    global timeNow, timeNowTotal, steering_angles, timestamps
     # Configure depth and color streams
     pipeline = rs.pipeline()
     config = rs.config()
@@ -553,11 +611,28 @@ def main():
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
-                        steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
+                        steeringAngle = steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
+                        track_steering_angle(steeringAngle)
                     
                     #Printing hz of python code
                     print("FPS: ", 1.0 / (time.time() - timeNowTotal))
                     timeNowTotal = time.time()
+
+                    # Assuming steeringAngle is updated in your main loop
+                    
+                    
+                    # Your existing code...
+                    
+                    # Calculate oscillation period at the end of the loop
+                    peaks, troughs = find_peaks_and_troughs(steering_angles)
+                    peak_periods = calculate_oscillation_period(timestamps, peaks)
+                    trough_periods = calculate_oscillation_period(timestamps, troughs)
+                    
+                    if peak_periods:
+                        print("Average peak period:", sum(peak_periods) / len(peak_periods))
+                    if trough_periods:
+                        print("Average trough period:", sum(trough_periods) / len(trough_periods))
+    
             # except:
             #     print("Error in main loop")
                     
