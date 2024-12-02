@@ -98,8 +98,8 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
         distance=d
 
     world_coords = np.linalg.norm(np.linalg.dot(P_inv, np.array([x, y, 1])))*d
-    x_cart = world_coords[0]
-    y_cart = world_coords[2]
+    y_cart = world_coords[0]
+    x_cart = world_coords[2]
     print('x', x_cart)
     print('y', y_cart)
     return x_cart, y_cart
