@@ -33,6 +33,7 @@ orangeSeen = False
 allLapsCompleted = False
 tenSteps = 0
 lapCount = 0
+stopTime = 0
 ######################
 
 ###CONTROL MODULE###
@@ -42,24 +43,18 @@ arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
-pControlValue = 5
+pControlValue = 0.9
 iControlValue = 0.00
-dControlValue = 0.00
+dControlValue = 0.1
 
 integral_error = 0.0
 previous_error = 0.0
 #################
 
 
-###FPS FIX###
-timeNow = 0
+###FPS###
 timeNowTotal = 0
-stopTime = 0
 #############
-
-
-
-
 
 
 def close_plot(event):
@@ -101,11 +96,9 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     norm = np.linalg.norm(world_coords)
     world_coords = world_coords/norm
 
-    print("world_coords",world_coords)
     y_cart = world_coords[0]
     x_cart = world_coords[2]
-    print('x', x_cart)
-    print('y', y_cart)
+
     return x_cart, y_cart
 
 
@@ -198,7 +191,6 @@ def filterColors(colorFrame, nedre, ovre):
 
 
 def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
-    global timeNow
     # Apply the binary mask to the depth frame
     kegleDepth = cv2.bitwise_and(depthFrame, depthFrame, mask=binaryImage)
     
@@ -349,31 +341,8 @@ def speedAngleArduino(localspeed,angle):
 def deg2turnvalue(deg):
     return 90 + deg*90/maxTurnAngle # 37 is the max turn angle in degrees      -      90 is the middle for the servo(0-180)
 
-
-time_values = []
-steering_angle_values = []
-
-def plot_steering_angle(steering_angle, max_duration=10):
-    current_time = time.time()
-    time_values.append(current_time)
-    steering_angle_values.append(steering_angle)
-    
-    # Remove old data beyond the max_duration
-    while time_values and (current_time - time_values[0] > max_duration):
-        time_values.pop(0)
-        steering_angle_values.pop(0)
-    
-    plt.figure(figsize=(10, 5))
-    plt.plot([t - time_values[0] for t in time_values], steering_angle_values, label='Steering Angle')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Steering Angle')
-    plt.title('Steering Angle Over Time')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
 def steerToAngleOfCoordinate(currentxy, targetxy):
-    global integral_error, previous_error
+    global integral_error, previous_error, pControlValue, iControlValue, dControlValue
 
     #Deviation in x and y
     dx = targetxy[0] - currentxy[0]
@@ -392,7 +361,6 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     integral_error += angleError #I error
     integralValue = iControlValue * integral_error #I
     derivativeValue = angleError - previous_error #D
-    # print("PID CONTROLLER: Proportional Value:",proportionalValue,"Integral Value:",integralValue,"Derivative Value:",derivativeValue)
     
     #Avoid integral_error overflow
     if integral_error > 500:
@@ -402,23 +370,20 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     previous_error = angleError
 
     #sums P, I and D
-    steeringAngle = (proportionalValue + integralValue + derivativeValue)*-1 #Negative to get correct direction
+    steeringAngle = (proportionalValue + integralValue + derivativeValue)*-1 #Negative to get correct direction(Because of the servos mounted direction)
     
-   
-
     if steeringAngle > maxTurnAngle:
         steeringAngle = maxTurnAngle
-        # print("max turn angle achieved.")
+        
     elif steeringAngle < -maxTurnAngle:
         steeringAngle = -maxTurnAngle
-        # print("min turn angle achieved.")
+        
+
     
     
-    # print("steeringAngle:",steeringAngle)
-    # print("ServoValue:",int(deg2turnvalue(steeringAngle))) #SKAL MÅSKE KONVERTERES TIL INT
     
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
-    #print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
+    
 
 def calculate_speed(curvature):
     global speed
@@ -429,16 +394,16 @@ def calculate_speed(curvature):
     
     try:
         speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
-        #print("Curvature:",curvature)
+        
         
         if speed > v_max:
             speed = v_max
         elif speed < v_min:
             speed = v_min
-        print("Speed:",speed)
+        
     except:
         print("Division by zero in calculate_speed")
-        speed = v_min
+        
 
 def stopLineDetection(orangeCones):
     global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, allLapsCompleted, tenSteps, lapCount
@@ -446,7 +411,7 @@ def stopLineDetection(orangeCones):
         orangeFrameCount += 1
         
         if orangeFrameCount == 5: #If orange cone is seen for 5 frames
-            print("ORANGE CONE DETECTED - INITIATING STOP")
+        
             orangeSeen = True
 
     if orangeSeen:
@@ -461,7 +426,7 @@ def stopLineDetection(orangeCones):
                     
 
                     if lapCount >= 1:
-                        print("10 LAP COMPLETED - STOPPING CAR")
+                        print(lapCount," LAPS COMPLETED - STOPPING CAR")
                         if not allLapsCompleted:
                             allLapsCompleted = True
                             tenSteps = (speed-90)//10
@@ -482,38 +447,9 @@ def stopLineDetection(orangeCones):
             
     return False 
 
-# Initialize variables to store steering angles and timestamps
-steering_angles = [90, 90,90]
-timestamps = []
-
-
-# Function to track steering angle
-def track_steering_angle(steeringAngle):
-    global steering_angles, timestamps
-    steering_angles.append(steeringAngle)
-    timestamps.append(time.time())
-
-# Function to find peaks and troughs
-def find_peaks_and_troughs(angles):
-    peaks = []
-    troughs = []
-    for i in range(1, len(angles) - 1):
-        if angles[i] > angles[i - 1] and angles[i] > angles[i + 1]:
-            peaks.append(i)
-        elif angles[i] < angles[i - 1] and angles[i] < angles[i + 1]:
-            troughs.append(i)
-    return peaks, troughs
-
-# Function to calculate oscillation period
-def calculate_oscillation_period(timestamps, indices):
-    periods = []
-    for i in range(1, len(indices)):
-        period = timestamps[indices[i]] - timestamps[indices[i - 1]]
-        periods.append(period)
-    return periods
 
 def main():
-    global timeNow, timeNowTotal, steering_angles, timestamps
+    global timeNowTotal
     # Configure depth and color streams
     pipeline = rs.pipeline()
     config = rs.config()
@@ -603,7 +539,7 @@ def main():
 
                     if stopLineDetection(orangeCartisianCoordinates):
                         
-                        print("speed",speed)
+                        
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
                         break
                     elif not allLapsCompleted:
@@ -611,28 +547,11 @@ def main():
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
-                        steeringAngle = steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
-                        track_steering_angle(steeringAngle)
+                        steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
                     
                     #Printing hz of python code
-                    print("FPS: ", 1.0 / (time.time() - timeNowTotal))
+                    #print("FPS: ", 1.0 / (time.time() - timeNowTotal))
                     timeNowTotal = time.time()
-
-                    # Assuming steeringAngle is updated in your main loop
-                    
-                    
-                    # Your existing code...
-                    
-                    # Calculate oscillation period at the end of the loop
-                    peaks, troughs = find_peaks_and_troughs(steering_angles)
-                    peak_periods = calculate_oscillation_period(timestamps, peaks)
-                    trough_periods = calculate_oscillation_period(timestamps, troughs)
-                    
-                    if peak_periods:
-                        print("Average peak period:", sum(peak_periods) / len(peak_periods))
-                    if trough_periods:
-                        print("Average trough period:", sum(trough_periods) / len(trough_periods))
-    
             # except:
             #     print("Error in main loop")
                     
