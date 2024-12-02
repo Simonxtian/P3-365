@@ -22,7 +22,7 @@ nedreBlaa = (100,190,60)
 ovreBlaa = (115,255,255)
 
 #grænseværdier for orange farve i HSV
-nedreOrange = (5,200,230)
+nedreOrange = (2,200,170)
 ovreOrange = (17,255,255)
 
 #Orange cones count
@@ -304,8 +304,8 @@ def predict_curvature(coords):
 def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    v_min=110
-    v_max=130
+    v_min=105
+    v_max=120
     max_curvature=0.001
     
     try:
@@ -409,7 +409,7 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     #print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
 def stopLineDetection(orangeCones):
-    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, speedRunOnce, tenSteps
+    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, speedRunOnce, tenSteps, lapCount
     if (len(orangeCones) > 0) and not orangeSeen:
         orangeFrameCount += 1
         
@@ -424,18 +424,27 @@ def stopLineDetection(orangeCones):
             if orangeNotSeenCount > 5: #If orange cone is not seen for 5 frames
                 #Descelerate over a period of 2 seconds while running main function
                 
-                if not speedRunOnce:
-                    print("STOP LINE REACHED - STOPPING CAR")
-                    speedRunOnce = True
-                    tenSteps = -(speed-90)//10
-
-                if time.time() - stopTime > 0.2:
-                    stopTime = time.time()
-                    speed += tenSteps
+                    print("STOP LINE REACHED")
+                    lapCount += 1
                     
-                if speed < 91:
-                    speedAngleArduino(90,90)
-                    return True
+
+                    if lapCount >= 1:
+                        print("10 LAP COMPLETED - STOPPING CAR")
+                        if not speedRunOnce:
+                            speedRunOnce = True
+                            tenSteps = -(speed-90)//10
+
+                        if time.time() - stopTime > 0.2:
+                            stopTime = time.time()
+                            speed += tenSteps
+
+                        if speed < 91:
+                            speedAngleArduino(90,90)
+                            return True
+                    else:   
+                        orangeSeen = False
+                        orangeFrameCount = 0
+                        orangeNotSeenCount = 0
             
     return False 
 
@@ -522,8 +531,6 @@ def main():
                     calculate_speed(averageCurvature)
 
                     if stopLineDetection(orangeCartisianCoordinates):
-                        
-                        print("speed",speed)
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
                         break
                 
