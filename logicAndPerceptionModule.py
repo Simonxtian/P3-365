@@ -68,15 +68,23 @@ def close_plot(event):
 
 def get_cartesian_coordinates(x, y, w, depth_image, img):
     # Calculate horizontal angle of the object from the center of the image
-    halfImageWidth = 211
-    halfImageHeight = 120.6
-    focalLength = 210.06
-    
-    dx = x - halfImageWidth
-    dy = y - halfImageHeight
+    cx = 210.0619354248047 # Principal point x-coordinate
+    cy = 120.53054809570312 # Principal point y-coordinate
+    focalLength = 210.0619354248047 # Focal length, in pixels
+        
+    # Camera tilt in degrees
+    camera_tilt = np.radians(15)
 
-    azimuthangle = math.atan2(dx,focalLength)
-    polarangle = math.pi/2 - math.atan2(dy,focalLength)
+    # Camera intrinsics
+    K = np.array([[focalLength, 0, cx], [0, focalLength, cy], [0, 0, 1]])
+    # Rotation matrix
+    R = np.array([  [1, 0, 0,], 
+                    [0, np.cos(camera_tilt), -np.sin(camera_tilt)], 
+                    [0, np.sin(camera_tilt), np.cos(camera_tilt)]   ])
+    # Projection matrix
+    P = np.dot(K, R)
+    P_inv = np.linalg.inv(P)
+    # NTS: Include distance calculation
 
     # Get distance from the depth frame
     bbox = (x-w//5, y-w*2//5, w*2//5, w*2//5)
@@ -89,10 +97,11 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     else:
         distance=d
 
-    # Convert spherical coordinates to Cartesian
-    x_cart = int(1.0223*(distance * math.sin(polarangle)) * math.cos(azimuthangle))
-    y_cart = int(distance * math.sin(polarangle)) * math.sin(azimuthangle)
-
+    world_coords = np.linalg.norm(np.linalg.dot(P_inv, np.array([x, y, 1])))*d
+    x_cart = world_coords[0]
+    y_cart = world_coords[2]
+    print('x', x_cart)
+    print('y', y_cart)
     return x_cart, y_cart
 
 
