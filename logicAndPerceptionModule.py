@@ -25,12 +25,14 @@ ovreBlaa = (115,255,255)
 nedreOrange = (2,200,170)
 ovreOrange = (17,255,255)
 
+
 #Orange cones count
 orangeFrameCount = 0
 orangeNotSeenCount = 0
 orangeSeen = False
-speedRunOnce = False
+allLapsCompleted = False
 tenSteps = 0
+lapCount = 0
 ######################
 
 ###CONTROL MODULE###
@@ -55,30 +57,34 @@ timeNowTotal = 0
 stopTime = 0
 #############
 
+
+
+
+
+
 def close_plot(event):
                     if event.key == 'q': 
                         plt.close()
 
-def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_image_width):
-    """
-    Converts pixel coordinates (x, y) of an object in an image to Cartesian coordinates
-    relative to the camera, using the depth frame to calculate distance and focal length
-    to calculate the angle.
-
-    Parameters:
-    - x, y: Pixel coordinates of the object.
-    - depth_frame: The depth frame from which to retrieve the object's distance.
-    - focal_length: The focal length of the camera in pixels.
-    - image_width: The width of the image in pixels.
-
-    Returns:
-    - (x_cart, y_cart): Tuple of Cartesian coordinates in millimeters (integers).
-    """
-    
-    
+def get_cartesian_coordinates(x, y, w, depth_image, img):
     # Calculate horizontal angle of the object from the center of the image
-    dx = x - half_image_width
-    angle = math.degrees(math.atan(dx / focal_length))
+    cx = 210.0619354248047 # Principal point x-coordinate
+    cy = 120.53054809570312 # Principal point y-coordinate
+    focalLength = 210.0619354248047 # Focal length, in pixels
+        
+    # Camera tilt in degrees
+    camera_tilt = np.radians(15)
+
+    # Camera intrinsics
+    K = np.array([[focalLength, 0, cx], [0, focalLength, cy], [0, 0, 1]])
+    # Rotation matrix
+    R = np.array([  [1, 0, 0,], 
+                    [0, np.cos(camera_tilt), -np.sin(camera_tilt)], 
+                    [0, np.sin(camera_tilt), np.cos(camera_tilt)]   ])
+    # Projection matrix
+    P = np.dot(K, R)
+    P_inv = np.linalg.inv(P)
+    # NTS: Include distance calculation
 
     # Get distance from the depth frame
     bbox = (x-w//5, y-w*2//5, w*2//5, w*2//5)
@@ -91,11 +97,14 @@ def get_cartesian_coordinates(x, y, w, depth_image, img, focal_length, half_imag
     else:
         distance=d
 
-    # Convert spherical coordinates to Cartesian
-    x_cart = int(distance * math.cos(math.radians(angle)))
-    y_cart = int(distance * math.sin(math.radians(angle)))
-
+    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*d
+    print("world_coords",world_coords)
+    y_cart = world_coords[0]
+    x_cart = world_coords[2]
+    print('x', x_cart)
+    print('y', y_cart)
     return x_cart, y_cart
+
 
 def calculate_midpoints(blue_cones, yellow_cones):
     """
@@ -163,15 +172,9 @@ def calculate_midpoints(blue_cones, yellow_cones):
         return midpoints
 
 def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
-    
-    FOV = 87.0
-    width = 424
-    halfImageWidth = width / 2
-    focalLength = width / (2 * math.tan(math.radians(FOV / 2)))
-    
     cartisianCoordinates = []
     for point in bottomPoints:
-        cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame, focalLength, halfImageWidth))
+        cartisianCoordinates.append(get_cartesian_coordinates(point[0], point[1], point[2], depthImage, kegleFrame))
     return cartisianCoordinates
 
 def filterColors(colorFrame, nedre, ovre):
@@ -189,6 +192,7 @@ def filterColors(colorFrame, nedre, ovre):
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
 
     return mask
+
 
 def depthSegmentation(binaryImage, depthFrame, colorFrame, combineTheContours, text):
     global timeNow
@@ -278,7 +282,7 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
-        print("Insufficient points to calculate curvature.")
+        # print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -292,35 +296,15 @@ def predict_curvature(coords):
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
 
+    
     spline = CubicSpline(x_coords, y_coords, bc_type='natural')
-
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
+    curvatures = [calculate_curvature(spline, x) for x in x_smooth]
+    max_curvature = np.max(curvatures)
 
-    # Calculates the curvature of the spline at each point
-    avg_curvature = np.average([calculate_curvature(spline, x) for x in x_smooth])
-    return avg_curvature, spline
-        
+    
 
-def calculate_speed(curvature):
-    global speed
-    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    v_min=105
-    v_max=120
-    max_curvature=0.001
-    
-    try:
-        speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
-        #print("Curvature:",curvature)
-        
-        if speed > v_max:
-            speed = v_max
-        elif speed < v_min:
-            speed = v_min
-        print("Speed:",speed)
-    except:
-        print("Division by zero in calculate_speed")
-        speed = v_min
-    
+    return max_curvature, spline
 
 def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
     plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
@@ -408,8 +392,28 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
     #print("AngleError:",angleError,"Angle send to arduino:",int(deg2turnvalue(steeringAngle)))
 
+def calculate_speed(curvature):
+    global speed
+    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+    v_min=105
+    v_max=120
+    max_curvature=0.001
+    
+    try:
+        speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
+        #print("Curvature:",curvature)
+        
+        if speed > v_max:
+            speed = v_max
+        elif speed < v_min:
+            speed = v_min
+        print("Speed:",speed)
+    except:
+        print("Division by zero in calculate_speed")
+        speed = v_min
+
 def stopLineDetection(orangeCones):
-    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, speedRunOnce, tenSteps, lapCount
+    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, allLapsCompleted, tenSteps, lapCount
     if (len(orangeCones) > 0) and not orangeSeen:
         orangeFrameCount += 1
         
@@ -430,16 +434,18 @@ def stopLineDetection(orangeCones):
 
                     if lapCount >= 1:
                         print("10 LAP COMPLETED - STOPPING CAR")
-                        if not speedRunOnce:
-                            speedRunOnce = True
-                            tenSteps = -(speed-90)//10
+                        if not allLapsCompleted:
+                            allLapsCompleted = True
+                            tenSteps = (speed-90)//10
 
                         if time.time() - stopTime > 0.2:
                             stopTime = time.time()
-                            speed += tenSteps
+                            speed -= tenSteps
 
                         if speed < 91:
                             speedAngleArduino(90,90)
+                            speed = 90
+                            print("speed",speed)
                             return True
                     else:   
                         orangeSeen = False
@@ -485,14 +491,21 @@ def main():
                     depthImage = np.asanyarray(depthFrame.get_data())
                     
                     # Filter colors to get masks for yellow and blue cones
+                    
                     gulMask = filterColors(colorImage, nedreGul, ovreGul)
+                   
                     blaaMask = filterColors(colorImage, nedreBlaa, ovreBlaa)
+                    
                     orangeMask = filterColors(colorImage, nedreOrange, ovreOrange)
                     
                     
                     # Depth segmentation to differentiate overlapping cones and get the bottom points of the cones
                     guleKegler, guleBottomPoints = depthSegmentation(gulMask, depthImage, colorImage, True, "Gul")
+                    
+                    
                     blaaKegler, blaaBottomPoints = depthSegmentation(blaaMask, depthImage, colorImage, True, "Blaa")
+                    
+                    
                     orangeKegler, orangeBottomPoints = depthSegmentation(orangeMask, depthImage, colorImage, False, "Orange")
 
 
@@ -528,11 +541,15 @@ def main():
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                         
-                    calculate_speed(averageCurvature)
+                    
 
                     if stopLineDetection(orangeCartisianCoordinates):
+                        
+                        print("speed",speed)
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
                         break
+                    elif not allLapsCompleted:
+                        calculate_speed(averageCurvature)
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
