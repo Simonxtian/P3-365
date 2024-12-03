@@ -527,9 +527,9 @@ def main():
                     combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
                     combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
                     # Show the images
-                    cv2.imshow('RealSense Depth', depthColormap)
-                    cv2.imshow('Combined blue and yellow', combinedImage)
-                    cv2.imshow('Orange', orangeMask)
+                    #cv2.imshow('RealSense Depth', depthColormap)
+                    #cv2.imshow('Combined blue and yellow', combinedImage)
+                    #cv2.imshow('Orange', orangeMask)
                     fig=plt.gcf()
                     fig.canvas.mpl_connect('key_press_event', close_plot)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
