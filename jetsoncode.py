@@ -357,7 +357,7 @@ def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
     v_min=105
-    v_max=105
+    v_max=140
     max_curvature=0.001
     
     try:
