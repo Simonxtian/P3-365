@@ -55,10 +55,6 @@ timeNowTotal = 0
 #############
 
 
-def close_plot(event):
-                    if event.key == 'q': 
-                        plt.close()
-
 def get_cartesian_coordinates(x, y, w, depth_image, img):
     # Calculate horizontal angle of the object from the center of the image
     cx = 210.0619354248047 # Principal point x-coordinate
@@ -493,8 +489,6 @@ def main():
                     #cv2.imshow('RealSense Depth', depthColormap)
                     #cv2.imshow('Combined blue and yellow', combinedImage)
                     #cv2.imshow('Orange', orangeMask)
-                    fig=plt.gcf()
-                    fig.canvas.mpl_connect('key_press_event', close_plot)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                         
