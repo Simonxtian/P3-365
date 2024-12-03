@@ -10,7 +10,6 @@ import serial
 
 startTime = time.time()
 
-display_plot = False
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
@@ -301,36 +300,6 @@ def predict_curvature(coords):
 
     return max_curvature, spline
 
-def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
-    try:
-        plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
-        plt.scatter([point[0] for point in guleCartisianCoordinates], [point[1] for point in guleCartisianCoordinates], color='yellow', label='Yellow Cones')
-        plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
-
-        # Generate points on the spline
-        x_coords = [point[0] for point in midpoints]
-        # x_coords = np.insert(x_coords, 0,[0.0,0.0]) # Insert cars position as the first point
-        x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
-        
-        y_smooth = spline(x_smooth)
-        #y_smooth[0] = 0.0
-        # y_smooth = np.insert(y_smooth, 0,0.0) # Insert cars position as the first point
-        
-        # Plot the spline
-        plt.plot(x_smooth, y_smooth, color='green', label='Spline')
-
-        plt.xlim(0, 3000)
-        plt.ylim(-1500, 1500)
-        plt.gca().invert_yaxis()
-        plt.legend()
-        plt.show()
-        plt.pause(0.1)
-        plt.clf()
-    
-    finally:
-        print("Bruh")
-
-
 ###CONTROL MODULE####
 def speedAngleArduino(localspeed,angle):
     #localspeed is the speed set in this function, and not the global
@@ -466,15 +435,6 @@ def main():
     alignTo = rs.stream.color
     align = rs.align(alignTo)
 
-    # Ready for plotting
-    try:
-        if display_plot:
-            plt.ion()
-            plt.figure(figsize=(8, 6))
-    
-    finally:
-        print("No display")
-
     try:
         while True:
             # try:
@@ -524,10 +484,6 @@ def main():
                     averageCurvature, spline = predict_curvature(midpoints)
                     # print(f'Maximum curvature: {max_curvature}')
 
-                    # Check if the spline is not None before using itd
-                    if display_plot and spline is not None:
-                        plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
-                    
                     #DISPLAY NEDENFOR (UDKOMMENTER)
                     # Color map af depth image UDKOMMENTER
                     depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
