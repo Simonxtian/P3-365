@@ -4,7 +4,6 @@ import numpy as np
 import pyrealsense2 as rs
 import time
 from scipy.spatial import Delaunay
-import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
 import serial
 
