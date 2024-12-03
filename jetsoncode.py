@@ -492,13 +492,17 @@ def main():
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                         
+##################    den stopper ikke på grund af at dette er udkommateret     #&)/(#"&(/&"#¤(/)/!"&¤)(!"¤)==!"/¤)/!")(%
+################      stopLineDetection                                                   )(/#¤/)(!/("/#)!(?"¤(/"!%(/!)="(#?!
                     
-
-                    if stopLineDetection(orangeCartisianCoordinates):
+                    #if stopLineDetection(orangeCartisianCoordinates):
                         
                         
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
-                        break
+                        #break
+
+############################ ¤#/)("¤/"#%&(!"¤!"&)()=)(/&/%¤&%&/)(==)?)(//#!""#=¤(!"(&¤/(&!" 
+                    
                     elif not allLapsCompleted:
                         calculate_speed(averageCurvature)
                 
