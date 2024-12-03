@@ -39,7 +39,7 @@ stopTime = 0
 ###CONTROL MODULE###
 speed = 110
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
-arduino = serial.Serial(port='Dev/ttyUSB.0', baudrate=9600, timeout=.1) #Arduino
+arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
