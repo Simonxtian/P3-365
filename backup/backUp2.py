@@ -41,7 +41,7 @@ lapCount = 0
 ###CONTROL MODULE###
 speed = 90
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
-arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
+arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
@@ -125,9 +125,9 @@ def calculate_midpoints(blue_cones, yellow_cones):
         #IF no midpoints exist, but it sees a cone, it will avoid it
         midpoints = []
         if len(blue_cones)>0:
-            midpoints.append(((blue_cones[0][0]),(blue_cones[0][1]+525))) 
+            midpoints.append(((blue_cones[0][0]),(blue_cones[0][1]+450))) 
         else:
-            midpoints.append(((yellow_cones[0][0]),(yellow_cones[0][1]-525)))
+            midpoints.append(((yellow_cones[0][0]),(yellow_cones[0][1]-450)))
         return midpoints
     
     if len(all_cones) < 4:
@@ -269,10 +269,10 @@ def calculate_curvature(spline, x_val):
 def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    v_min=110
-    v_max=130
+    v_min=120
+    v_max=120
     max_curvature=0.002
-    
+    #0.002
     try:
         speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
         
@@ -399,7 +399,6 @@ def stopLineDetection(orangeCones):
             if orangeNotSeenCount > 5: #If orange cone is not seen for 5 frames
                 #Descelerate over a period of 2 seconds while running main function
                 
-                    print("STOP LINE REACHED")
                     lapCount += 1
                     
 
@@ -454,7 +453,7 @@ def main():
 
     try:
         while True:
-            # try:
+            try:
                 if time.time() - startTime > 5:
                     # Wait for a coherent pair of frames: depth and color
                     frames = pipeline.wait_for_frames()
@@ -556,8 +555,8 @@ def main():
 
 
                     timeNowTotal = time.time()
-            # except:
-            #     print("Error in main loop")
+            except:
+                print("Error in main loop")
                     
     finally:
         # Stop streaming
