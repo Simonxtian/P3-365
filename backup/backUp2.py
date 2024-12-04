@@ -10,7 +10,10 @@ import serial
 
 startTime = time.time()
 
+
 display_plot = False
+display_images = False
+laps = 1
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
@@ -30,21 +33,21 @@ ovreOrange = (17,255,255)
 orangeFrameCount = 0
 orangeNotSeenCount = 0
 orangeSeen = False
-speedRunOnce = False
+allLapsCompleted = False
 tenSteps = 0
 lapCount = 0
 ######################
 
 ###CONTROL MODULE###
-speed = 110
+speed = 90
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
 arduino = serial.Serial(port='COM5', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID VALUES####
-pControlValue = 0.9
-iControlValue = 0
-dControlValue = 1
+kP = 0.9
+kI = 0.001
+kP = 1
 
 integral_error = 0.0
 previous_error = 0.0
@@ -84,12 +87,13 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     bbox = (x-w//5, y-w*2//5, w*2//5, w*2//5)
     # Draw bbox
     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 0, 255), 2)
-    # average distance in the bounding box
+    # average distance in the bounding box in mm
     d = (np.nanmean(depth_image[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]) + 50.0)
 
-    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*d
+    world_coords = (np.dot(P_inv, np.array([x, y, 1])))
     norm = np.linalg.norm(world_coords)
     world_coords = world_coords/norm
+    world_coords = world_coords*d
 
     y_cart = world_coords[0]
     x_cart = world_coords[2]
@@ -112,6 +116,7 @@ def calculate_midpoints(blue_cones, yellow_cones):
     all_cones = np.array(blue_cones + yellow_cones)
 
     if len(all_cones) == 0:
+        #If no cones are seen, a midpoint is created straight in front of the car
         midpoints = [(10,0)]
         return midpoints
 
@@ -261,12 +266,38 @@ def calculate_curvature(spline, x_val):
     curvature = np.abs(ddx(x_val)) / (1 + dx(x_val)**2)**1.5
     return curvature
 
-def predict_curvature(coords):
-    if len(coords) < 2:
-        return 0.0, None  # Return 0.0 if there are too few points
+def calculate_speed(curvature):
+    global speed
+    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
+    v_min=110
+    v_max=130
+    max_curvature=0.002
+    
+    try:
+        speed = int(v_min + (v_max - v_min) * (1- (curvature/max_curvature)))
+        
+        if speed > v_max:
+            speed = v_max
+        elif speed < v_min:
+            speed = v_min
 
+        if curvature == 0:
+            #When no cones are detected, the car will drive at a constant slow speed
+            speed = v_min
+        
+    except:
+        print("Division by zero in calculate_speed")
+
+def predict_curvature(coords):
+    coords.append((0.0,0.0))  # Add a point at the origin of the car
+    if len(coords) < 2:
+        return 0.0, None  #Return 0.0 if there are too few points
+    
+    
     # Ensure coords is a list of tuples with two elements each
     coords = [(x, y) for x, y in coords if len((x, y)) == 2]
+    
+    
 
     # Remove duplicate x values while preserving order
     coords_dict = {x: y for x, y in coords}
@@ -274,7 +305,9 @@ def predict_curvature(coords):
 
     # Sort the coordinates by x values
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
+    
     x_coords, y_coords = zip(*sorted_coords)
+    
 
     spline = CubicSpline(x_coords, y_coords, bc_type=((1,0),'natural'))
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
@@ -304,7 +337,6 @@ def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, mi
     plt.pause(0.1)
     plt.clf()
 
-
 ###CONTROL MODULE####
 def speedAngleArduino(localspeed,angle):
     #localspeed is the speed set in this function, and not the global
@@ -312,13 +344,12 @@ def speedAngleArduino(localspeed,angle):
     angle = str(angle).zfill(3)
     val = f"{localspeed}{angle}\n"
     arduino.write(bytes(val, 'utf-8'))
-    
 
 def deg2turnvalue(deg):
     return 90 + deg*90/maxTurnAngle # 37 is the max turn angle in degrees      -      90 is the middle for the servo(0-180)
 
 def steerToAngleOfCoordinate(currentxy, targetxy):
-    global integral_error, previous_error
+    global integral_error, previous_error, speed
 
     #Deviation in x and y
     dx = targetxy[0] - currentxy[0]
@@ -329,10 +360,10 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     angleError = 90-math.degrees(angleError) # Convert to degrees and convert by 90 deg to get correct angle
 
     #PID
-    proportionalValue = pControlValue * angleError #P
+    proportionalValue = kP * angleError #P
     integral_error += angleError #I error
-    integralValue = iControlValue * integral_error #I
-    derivativeValue = dControlValue*(angleError - previous_error) #D
+    integralValue = kI * integral_error #I
+    derivativeValue = kP*(angleError - previous_error) #D
     
     #Avoid integral_error overflow
     if integral_error > 500:
@@ -349,13 +380,11 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
        
     elif steeringAngle < -maxTurnAngle:
         steeringAngle = -maxTurnAngle
-        
     
     speedAngleArduino(speed,int(deg2turnvalue(steeringAngle)))
-   
 
 def stopLineDetection(orangeCones):
-    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, speedRunOnce, tenSteps, lapCount
+    global orangeFrameCount, orangeSeen, orangeNotSeenCount, speed, stopTime, allLapsCompleted, tenSteps, lapCount
     if (len(orangeCones) > 0) and not orangeSeen:
         orangeFrameCount += 1
         
@@ -374,9 +403,9 @@ def stopLineDetection(orangeCones):
                     lapCount += 1
                     
 
-                    if lapCount >= 10:
-                        if not speedRunOnce:
-                            speedRunOnce = True
+                    if lapCount >= laps:
+                        if not allLapsCompleted:
+                            allLapsCompleted = True
                             tenSteps = -(speed-90)//10
                             print(lapCount, "LAPS COMPLETED - STOPPING CAR")
 
@@ -394,17 +423,18 @@ def stopLineDetection(orangeCones):
             
     return False 
 
-def calculate_speed(curvature):
-    # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    global speed
-    v_min = speed
-    v_max = speed
-    max_curvature = 0.0025
-    speed = v_min + (v_max - v_min) * (1- (curvature/max_curvature))
-    return speed
-
 def main():
-    global timeNow, timeNowTotal
+    global timeNow, timeNowTotal, allLapsCompleted
+    #FPS values
+    totalFrames = 0
+    averageFPS = 0
+    lastFPS = 0
+    maxFPS = 0
+    minFPS = 1000
+    cumulativeFPS = 0
+    lowFPSCount = 0
+    
+
     # Configure depth and color streams
     pipeline = rs.pipeline()
     config = rs.config()
@@ -468,40 +498,63 @@ def main():
                     
 
                     # Calculate the curvature of the spline
-                    max_curvature, spline = predict_curvature(midpoints)
-                    # print(f'Maximum curvature: {max_curvature}')
+                    averageCurvature, spline = predict_curvature(midpoints)
+                    
 
                     # Check if the spline is not None before using itd
                     if display_plot and spline is not None:
                         plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
                     
-                    #DISPLAY NEDENFOR (UDKOMMENTER)
-                    # Color map af depth image UDKOMMENTER
-                    depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
-                    # Combine the two images
-                    combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
-                    combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
-                    # Show the images
-                    cv2.imshow('RealSense Depth', depthColormap)
-                    cv2.imshow('Combined blue and yellow', combinedImage)
-                    cv2.imshow('Orange', orangeMask)
-                    fig=plt.gcf()
-                    fig.canvas.mpl_connect('key_press_event', close_plot)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+                    if display_images:
+                        #DISPLAY NEDENFOR 
+                        # Color map af depth image UDKOMMENTER
+                        depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
+                        # Combine the two images
+                        combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
+                        combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
+                        # Show the images
+                        cv2.imshow('RealSense Depth', depthColormap)
+                        cv2.imshow('Combined blue and yellow', combinedImage)
+                        cv2.imshow('Orange', orangeMask)
+                        fig=plt.gcf()
+                        fig.canvas.mpl_connect('key_press_event', close_plot)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            break
                     
                     if stopLineDetection(orangeCartisianCoordinates):
-                        
-                        print("speed",speed)
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
                         break
+                    elif not allLapsCompleted:
+                        calculate_speed(averageCurvature)
                 
                     #CONTROL MODULE
                     if len(midpoints) > 0:
                         steerToAngleOfCoordinate([0,0],midpoints[0]) #Car position and target position
                     
                     #Printing hz of python code
-                    print("FPS: ", 1.0 / (time.time() - timeNowTotal))
+                    FPS = 1.0 / (time.time() - timeNowTotal)
+                    totalFrames += 1
+                    cumulativeFPS += FPS
+                    averageFPS = cumulativeFPS/totalFrames
+
+                    if lastFPS>maxFPS:
+                        maxFPS = lastFPS
+                    elif (lastFPS < minFPS or minFPS == 1000) and lastFPS != 0:
+                        minFPS = lastFPS
+
+                    if FPS < 30:
+                        lowFPSCount += 1
+                        
+                    lowFPSPercentange = (lowFPSCount/totalFrames)*100
+
+                    print("minFPS: ", minFPS, "maxFPS: ", maxFPS, "averageFPS: ", averageFPS, "lowFPSPercentange: ", lowFPSPercentange)
+
+                    lastFPS = FPS
+                    
+
+
+
+
                     timeNowTotal = time.time()
             # except:
             #     print("Error in main loop")
