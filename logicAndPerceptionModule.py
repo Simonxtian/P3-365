@@ -87,10 +87,10 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 0, 255), 2)
     # average distance in the bounding box
     d = (np.nanmean(depth_image[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]) + 50.0)
-    if d > 430:
-        distance=math.sqrt(d**2 - 430**2)
-    else:
-        distance=d
+    #if d > 430:
+    #    distance=math.sqrt(d**2 - 430**2)
+    #else:
+    #    distance=d
 
     world_coords = (np.dot(P_inv, np.array([x, y, 1])))*distance
     norm = np.linalg.norm(world_coords)
@@ -292,7 +292,7 @@ def predict_curvature(coords):
     x_coords, y_coords = zip(*sorted_coords)
 
     
-    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
+    spline = CubicSpline(x_coords, y_coords, bc_type=((1,0),'natural'))
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
     curvatures = [calculate_curvature(spline, x) for x in x_smooth]
     max_curvature = np.max(curvatures)
