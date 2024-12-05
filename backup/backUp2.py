@@ -13,18 +13,18 @@ startTime = time.time()
 
 display_plot = False
 display_images = False
-laps = 1
+laps = 10
 
 ###PERCEPTION MODULE###
-#grænseværdier for gul farve i HSV
+#gr�nsev�rdier for gul farve i HSV
 nedreGul = (18,90,115)
 ovreGul = (32,255,255)
 
-#grænseværdier for blå farve i HSV
+#gr�nsev�rdier for bl� farve i HSV
 nedreBlaa = (100,190,60)
 ovreBlaa = (115,255,255)
 
-#grænseværdier for orange farve i HSV
+#gr�nsev�rdier for orange farve i HSV
 nedreOrange = (2,200,170)
 ovreOrange = (17,255,255)
 
@@ -41,13 +41,13 @@ lapCount = 0
 ###CONTROL MODULE###
 speed = 90
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
-arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1) #Arduino
+arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=.1) #Arduino
 ####################
 
-###PID VALUES####
-kP = 0.9
-kI = 0.001
-kP = 1
+###PID GAIN VALUES####
+kP = 1.3
+kI = 0.0003
+kD = 0.7
 
 integral_error = 0.0
 previous_error = 0.0
@@ -170,7 +170,7 @@ def listOfCartisianCoords(bottomPoints, depthImage, kegleFrame):
     return cartisianCoordinates
 
 def filterColors(colorFrame, nedre, ovre):
-    # Konverterer framen til hsv farveskalaen så vi bedre kan arbejde med den
+    # Konverterer framen til hsv farveskalaen s� vi bedre kan arbejde med den
     hsvFrame = cv2.cvtColor(colorFrame, cv2.COLOR_BGR2HSV)
         
     # Finder farverne i billedet
@@ -179,7 +179,7 @@ def filterColors(colorFrame, nedre, ovre):
     # median blur
     mask = cv2.medianBlur(mask, 5)
 
-    # Filtrerer små hvide steder fra
+    # Filtrerer sm� hvide steder fra
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
 
     return mask
@@ -269,8 +269,8 @@ def calculate_curvature(spline, x_val):
 def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    v_min=120
-    v_max=120
+    v_min=133
+    v_max=133
     max_curvature=0.002
     #0.002
     try:
@@ -359,11 +359,13 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     angleError = math.atan2(dx,dy) # Angle in radians
     angleError = 90-math.degrees(angleError) # Convert to degrees and convert by 90 deg to get correct angle
 
+    #print(angleError)
+
     #PID
     proportionalValue = kP * angleError #P
     integral_error += angleError #I error
     integralValue = kI * integral_error #I
-    derivativeValue = kP*(angleError - previous_error) #D
+    derivativeValue = kD*(angleError - previous_error) #D
     
     #Avoid integral_error overflow
     if integral_error > 500:
@@ -546,7 +548,7 @@ def main():
                         
                     lowFPSPercentange = (lowFPSCount/totalFrames)*100
 
-                    print("minFPS: ", minFPS, "maxFPS: ", maxFPS, "averageFPS: ", averageFPS, "lowFPSPercentange: ", lowFPSPercentange)
+                    #print("minFPS: ", minFPS, "maxFPS: ", maxFPS, "averageFPS: ", averageFPS, "lowFPSPercentange: ", lowFPSPercentange)
 
                     lastFPS = FPS
                     
