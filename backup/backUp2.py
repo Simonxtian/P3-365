@@ -368,7 +368,7 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     derivativeValue = kD*(angleError - previousError) #D
     
     #Avoid integralError overflow
-    if integralError > 500:integralError
+    if integralError > 500:
         integralError = 500
     elif integralError < -500:
         integralError = -500
