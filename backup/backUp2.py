@@ -41,7 +41,7 @@ lapCount = 0
 ###CONTROL MODULE###
 speed = 90
 maxTurnAngle = 30 #Max turn angle(degrees) from middle to left/middle to right
-arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=.1) #Arduino
+arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1) #Arduino
 ####################
 
 ###PID GAIN VALUES####
@@ -49,8 +49,8 @@ kP = 1.3
 kI = 0.0003
 kD = 0.7
 
-integral_error = 0.0
-previous_error = 0.0
+integralError = 0.0
+previousError = 0.0
 #################
 
 ###FPS FIX###
@@ -269,8 +269,8 @@ def calculate_curvature(spline, x_val):
 def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
-    v_min=133
-    v_max=133
+    v_min=122 #115
+    v_max=122 #120
     max_curvature=0.002
     #0.002
     try:
@@ -349,7 +349,7 @@ def deg2turnvalue(deg):
     return 90 + deg*90/maxTurnAngle # 37 is the max turn angle in degrees      -      90 is the middle for the servo(0-180)
 
 def steerToAngleOfCoordinate(currentxy, targetxy):
-    global integral_error, previous_error, speed
+    global integralError, previousError, speed
 
     #Deviation in x and y
     dx = targetxy[0] - currentxy[0]
@@ -363,16 +363,16 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
 
     #PID
     proportionalValue = kP * angleError #P
-    integral_error += angleError #I error
-    integralValue = kI * integral_error #I
-    derivativeValue = kD*(angleError - previous_error) #D
+    integralError += angleError #I error
+    integralValue = kI * integralError #I
+    derivativeValue = kD*(angleError - previousError) #D
     
-    #Avoid integral_error overflow
-    if integral_error > 500:
-        integral_error = 500
+    #Avoid integralError overflow
+    if integralError > 500:integralError
+        integralError = 500
 
     #Remember the current error for next iteration
-    previous_error = angleError
+    previousError = angleError
 
     #sums P, I and D
     steeringAngle = (proportionalValue + integralValue + derivativeValue)*-1 #Negative to get correct direction
