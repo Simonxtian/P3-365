@@ -370,6 +370,8 @@ def steerToAngleOfCoordinate(currentxy, targetxy):
     #Avoid integralError overflow
     if integralError > 500:integralError
         integralError = 500
+    elif integralError < -500:
+        integralError = -500
 
     #Remember the current error for next iteration
     previousError = angleError
