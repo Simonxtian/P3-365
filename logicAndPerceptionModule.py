@@ -10,7 +10,7 @@ import serial
 
 startTime = time.time()
 
-display_plot = False
+display_plot = True
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
@@ -87,12 +87,12 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 0, 255), 2)
     # average distance in the bounding box
     d = (np.nanmean(depth_image[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]) + 50.0)
-    if d > 430:
-        distance=math.sqrt(d**2 - 430**2)
-    else:
-        distance=d
+    #if d > 430:
+    #    distance=math.sqrt(d**2 - 430**2)
+    #else:
+    #    distance=d
 
-    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*distance
+    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*d
     norm = np.linalg.norm(world_coords)
     world_coords = world_coords/norm
 
@@ -277,7 +277,6 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
-        # print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -290,14 +289,14 @@ def predict_curvature(coords):
     # Sort the coordinates by x values
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
+    
+
 
     
-    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
+    spline = CubicSpline(x_coords, y_coords, bc_type=((1,0),'natural'))
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
     curvatures = [calculate_curvature(spline, x) for x in x_smooth]
     max_curvature = np.max(curvatures)
-
-    
 
     return max_curvature, spline
 
@@ -527,9 +526,9 @@ def main():
                     combinedImage1 = cv2.bitwise_or(guleKegler, blaaKegler)
                     combinedImage = cv2.bitwise_or(combinedImage1, orangeKegler)
                     # Show the images
-                    cv2.imshow('RealSense Depth', depthColormap)
-                    cv2.imshow('Combined blue and yellow', combinedImage)
-                    cv2.imshow('Orange', orangeMask)
+                    #cv2.imshow('RealSense Depth', depthColormap)
+                    #cv2.imshow('Combined blue and yellow', combinedImage)
+                    #cv2.imshow('Orange', orangeMask)
                     fig=plt.gcf()
                     fig.canvas.mpl_connect('key_press_event', close_plot)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
