@@ -4,13 +4,11 @@ import numpy as np
 import pyrealsense2 as rs
 import time
 from scipy.spatial import Delaunay
-import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
 import serial
 
 startTime = time.time()
 
-display_plot = True
 
 ###PERCEPTION MODULE###
 #grænseværdier for gul farve i HSV
@@ -57,10 +55,6 @@ timeNowTotal = 0
 #############
 
 
-def close_plot(event):
-                    if event.key == 'q': 
-                        plt.close()
-
 def get_cartesian_coordinates(x, y, w, depth_image, img):
     # Calculate horizontal angle of the object from the center of the image
     cx = 210.0619354248047 # Principal point x-coordinate
@@ -87,12 +81,12 @@ def get_cartesian_coordinates(x, y, w, depth_image, img):
     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 0, 255), 2)
     # average distance in the bounding box
     d = (np.nanmean(depth_image[bbox[1]:bbox[1]+bbox[3], bbox[0]:bbox[0]+bbox[2]]) + 50.0)
-    #if d > 430:
-    #    distance=math.sqrt(d**2 - 430**2)
-    #else:
-    #    distance=d
+    if d > 430:
+        distance=math.sqrt(d**2 - 430**2)
+    else:
+        distance=d
 
-    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*d
+    world_coords = (np.dot(P_inv, np.array([x, y, 1])))*distance
     norm = np.linalg.norm(world_coords)
     world_coords = world_coords/norm
 
@@ -277,6 +271,7 @@ def calculate_curvature(spline, x_val):
 
 def predict_curvature(coords):
     if len(coords) < 2:
+        # print("Insufficient points to calculate curvature.")
         return 0.0, None  # Return 0.0 if there are too few points
 
     # Ensure coords is a list of tuples with two elements each
@@ -289,42 +284,16 @@ def predict_curvature(coords):
     # Sort the coordinates by x values
     sorted_coords = sorted(unique_coords, key=lambda coord: coord[0])
     x_coords, y_coords = zip(*sorted_coords)
-    
-
 
     
-    spline = CubicSpline(x_coords, y_coords, bc_type=((1,0),'natural'))
+    spline = CubicSpline(x_coords, y_coords, bc_type='natural')
     x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
     curvatures = [calculate_curvature(spline, x) for x in x_smooth]
     max_curvature = np.max(curvatures)
 
+    
+
     return max_curvature, spline
-
-def plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline):
-    plt.scatter([point[0] for point in blaaCartisianCoordinates], [point[1] for point in blaaCartisianCoordinates], color='blue', label='Blue Cones')
-    plt.scatter([point[0] for point in guleCartisianCoordinates], [point[1] for point in guleCartisianCoordinates], color='yellow', label='Yellow Cones')
-    plt.scatter([point[0] for point in midpoints], [point[1] for point in midpoints], color='red', label='Midpoints')
-
-    # Generate points on the spline
-    x_coords = [point[0] for point in midpoints]
-    # x_coords = np.insert(x_coords, 0,[0.0,0.0]) # Insert cars position as the first point
-    x_smooth = np.linspace(min(x_coords), max(x_coords), 10)
-    
-    y_smooth = spline(x_smooth)
-    #y_smooth[0] = 0.0
-    # y_smooth = np.insert(y_smooth, 0,0.0) # Insert cars position as the first point
-    
-    # Plot the spline
-    plt.plot(x_smooth, y_smooth, color='green', label='Spline')
-
-    plt.xlim(0, 3000)
-    plt.ylim(-1500, 1500)
-    plt.gca().invert_yaxis()
-    plt.legend()
-    plt.show()
-    plt.pause(0.1)
-    plt.clf()
-
 
 ###CONTROL MODULE####
 def speedAngleArduino(localspeed,angle):
@@ -388,7 +357,7 @@ def calculate_speed(curvature):
     global speed
     # Linear interpolation from v_min at max_curvature to v_max at curvature = 0
     v_min=105
-    v_max=105
+    v_max=140
     max_curvature=0.001
     
     try:
@@ -461,11 +430,6 @@ def main():
     alignTo = rs.stream.color
     align = rs.align(alignTo)
 
-    # Ready for plotting
-    if display_plot:
-        plt.ion()
-        plt.figure(figsize=(8, 6))
-
     try:
         while True:
             # try:
@@ -515,10 +479,6 @@ def main():
                     averageCurvature, spline = predict_curvature(midpoints)
                     # print(f'Maximum curvature: {max_curvature}')
 
-                    # Check if the spline is not None before using itd
-                    if display_plot and spline is not None:
-                        plotPointsOgMidpoints(blaaCartisianCoordinates, guleCartisianCoordinates, midpoints, spline)
-                    
                     #DISPLAY NEDENFOR (UDKOMMENTER)
                     # Color map af depth image UDKOMMENTER
                     depthColormap = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.1), cv2.COLORMAP_JET)
@@ -529,18 +489,20 @@ def main():
                     #cv2.imshow('RealSense Depth', depthColormap)
                     #cv2.imshow('Combined blue and yellow', combinedImage)
                     #cv2.imshow('Orange', orangeMask)
-                    fig=plt.gcf()
-                    fig.canvas.mpl_connect('key_press_event', close_plot)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
                         
+##################    den stopper ikke på grund af at dette er udkommateret     #&)/(#"&(/&"#¤(/)/!"&¤)(!"¤)==!"/¤)/!")(%
+################      stopLineDetection                                                   )(/#¤/)(!/("/#)!(?"¤(/"!%(/!)="(#?!
                     
-
-                    if stopLineDetection(orangeCartisianCoordinates):
+                    #if stopLineDetection(orangeCartisianCoordinates):
                         
                         
                         #This has to stop before steerToAngleOfCoordinate is called (otherwise it will not stop, because of serial timeout in arduino)
-                        break
+                        #break
+
+############################ ¤#/)("¤/"#%&(!"¤!"&)()=)(/&/%¤&%&/)(==)?)(//#!""#=¤(!"(&¤/(&!" 
+                    
                     elif not allLapsCompleted:
                         calculate_speed(averageCurvature)
                 
